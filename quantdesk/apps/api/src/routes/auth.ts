@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createHmac, randomBytes } from 'crypto';
+import { createHmac } from 'crypto';
 import { verifyIdToken } from '../services/auth/firebaseAdmin';
 import { upsertFromFirebase, updateLastLogin, recordAudit } from '../services/db/userService';
 import { onboardNewUser } from '../services/auth/onboardingService';
@@ -78,6 +78,86 @@ router.post('/logout', async (req, res) => {
   } catch {
     res.json({ ok: true }); // Always succeed on logout
   }
+});
+
+/** GET /api/auth/invite/:token — fetch invitation details (no auth required) */
+router.get('/invite/:token', async (req, res) => {
+  const { token } = req.params;
+  const { query: dbQuery } = await import('../db/postgres');
+  const [inv] = await dbQuery<{
+    id: string; email: string; first_name: string | null; last_name: string | null;
+    intended_role: string; status: string; expires_at: string; org_name: string;
+    invited_by_name: string;
+  }>(
+    `SELECT i.id, i.email, i.first_name, i.last_name, i.intended_role, i.status, i.expires_at,
+            o.name AS org_name, u.display_name AS invited_by_name
+     FROM user_invitations i
+     JOIN organizations o ON o.id = i.org_id
+     JOIN users u ON u.id = i.invited_by
+     WHERE i.token = $1`,
+    [token],
+  ).catch(() => [] as never[]);
+
+  if (!inv) { res.status(404).json({ error: 'Invitation not found' }); return; }
+  if (inv.status !== 'pending') { res.status(410).json({ error: 'Invitation already used or revoked' }); return; }
+  if (new Date(inv.expires_at) < new Date()) { res.status(410).json({ error: 'Invitation has expired' }); return; }
+
+  res.json({ invitation: inv });
+});
+
+/** POST /api/auth/accept-invite — accept an invitation after Firebase sign-up */
+router.post('/accept-invite', async (req, res) => {
+  const { token, idToken } = req.body as { token?: string; idToken?: string };
+  if (!token || !idToken) { res.status(400).json({ error: 'token and idToken required' }); return; }
+
+  const { query: dbQuery, transaction } = await import('../db/postgres');
+
+  // Verify firebase token
+  let decoded: Awaited<ReturnType<typeof verifyIdToken>>;
+  try { decoded = await verifyIdToken(idToken); } catch {
+    res.status(401).json({ error: 'Invalid Firebase token' }); return;
+  }
+
+  // Load invitation
+  const [inv] = await dbQuery<{
+    id: string; org_id: string; email: string; first_name: string | null; last_name: string | null;
+    intended_role: string; intended_teams: string[]; status: string; expires_at: string;
+  }>(
+    `SELECT id, org_id, email, first_name, last_name, intended_role, intended_teams, status, expires_at
+     FROM user_invitations WHERE token = $1`,
+    [token],
+  ).catch(() => [] as never[]);
+
+  if (!inv) { res.status(404).json({ error: 'Invitation not found' }); return; }
+  if (inv.status !== 'pending') { res.status(410).json({ error: 'Invitation already used or revoked' }); return; }
+  if (new Date(inv.expires_at) < new Date()) { res.status(410).json({ error: 'Invitation has expired' }); return; }
+
+  // Upsert user then assign org + role
+  const user = await upsertFromFirebase({
+    uid: decoded.uid, email: decoded.email ?? inv.email,
+    name: inv.first_name ? `${inv.first_name} ${inv.last_name ?? ''}`.trim() : decoded.name,
+    picture: decoded.picture,
+  });
+
+  await transaction(async (client) => {
+    await client.query(
+      `UPDATE users SET org_id = $1, org_role = $2, team_ids = $3, is_active = true
+       WHERE id = $4`,
+      [inv.org_id, inv.intended_role, inv.intended_teams, user.id],
+    );
+    await client.query(
+      `UPDATE user_invitations SET status = 'accepted', accepted_at = NOW() WHERE id = $1`,
+      [inv.id],
+    );
+  });
+
+  await Promise.all([
+    updateLastLogin(user.id),
+    setSession(user.id, { userId: user.id, firebaseUid: decoded.uid, email: user.email }),
+    recordAudit(user.id, 'invite_accepted', { metadata: { invitationId: inv.id, orgId: inv.org_id, role: inv.intended_role } }),
+  ]);
+
+  res.json({ ok: true, user, ...(process.env.NODE_ENV !== 'production' && { token: createDevToken(user.id) }) });
 });
 
 /** GET /api/auth/check?email=x — check if an account exists (no auth required) */
