@@ -3,7 +3,7 @@ import { generatePriceData, MOCK_NEWS } from './mockData';
 
 const API_KEY = import.meta.env.VITE_FINNHUB_API_KEY as string | undefined;
 const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
-const BASE = '/api/finnhub';
+const BASE = '/api/market-data/finnhub';
 
 function isMock() {
   return MOCK_MODE || !API_KEY;
