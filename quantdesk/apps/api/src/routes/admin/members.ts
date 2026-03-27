@@ -73,7 +73,20 @@ router.post('/invitations', async (req, res) => {
     };
 
     if (!email || !role) { res.status(400).json({ error: 'email and role are required' }); return; }
-    if (!req.adminUser.orgId) { res.status(400).json({ error: 'Your account has no organisation assigned' }); return; }
+
+    // Auto-assign org if admin has none (create default)
+    let orgId = req.adminUser.orgId;
+    if (!orgId) {
+      const [org] = await query<{ id: string }>(
+        `INSERT INTO organizations (name, slug, display_name, plan)
+         VALUES ('Suraksha Investment', 'suraksha-investment', 'Suraksha Investment', 'enterprise')
+         ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+         RETURNING id`,
+        [],
+      );
+      orgId = org.id;
+      await query(`UPDATE users SET org_id = $1, org_role = 'super_admin' WHERE id = $2`, [orgId, req.adminUser.id]);
+    }
 
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + expiryHours * 3600 * 1000);
@@ -81,9 +94,9 @@ router.post('/invitations', async (req, res) => {
     const [inv] = await query<{ id: string }>(
       `INSERT INTO user_invitations
          (org_id, invited_by, email, first_name, last_name, intended_role, intended_teams, token, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::UUID[], $8, $9)
        RETURNING id`,
-      [req.adminUser.orgId, req.adminUser.id, email, firstName ?? null, lastName ?? null,
+      [orgId, req.adminUser.id, email, firstName ?? null, lastName ?? null,
        role, teamIds ?? [], token, expiresAt.toISOString()],
     );
 
