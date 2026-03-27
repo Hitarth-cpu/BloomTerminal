@@ -21,7 +21,7 @@ const pool = new Pool({
   database: process.env.POSTGRES_DB       ?? 'quantdesk',
   user:     process.env.POSTGRES_USER     ?? 'quantdesk',
   password: process.env.POSTGRES_PASSWORD,
-  ssl:      process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : false,
+  ssl:      (process.env.POSTGRES_SSL === 'true' || process.env.NODE_ENV === 'production') ? { rejectUnauthorized: false } : false,
 });
 
 const MIGRATIONS_DIR = __dirname;
