@@ -181,7 +181,9 @@ export function onAuthStateChanged(cb: (user: AuthUser | null) => void): () => v
     const idToken = await fbUser.getIdToken().catch(() => null);
     if (idToken) {
       const token = await syncToBackend(user, idToken);
-      if (token) useAuthStore.getState().setUser(user, token);
+      useAuthStore.getState().setUser(user, token ?? undefined);
+    } else {
+      useAuthStore.getState().setUser(user, undefined);
     }
     cb(user);
   });
