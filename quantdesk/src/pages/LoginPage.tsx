@@ -131,16 +131,6 @@ export function LoginPage() {
 
     setLoading(true); setError(null);
     try {
-      // In mock/dev mode — verify the account exists before signing in
-      const check = await fetch(`/api/auth/check?email=${encodeURIComponent(email)}`).catch(() => null);
-      if (check?.ok) {
-        const { exists } = await check.json() as { exists: boolean };
-        if (!exists) {
-          setError('No account found for this email. Please sign up first.');
-          setLoading(false);
-          return;
-        }
-      }
       await signInWithEmail(email, password);
       // authService already calls setUser with the token — no need to call it again
     } catch (e) {
