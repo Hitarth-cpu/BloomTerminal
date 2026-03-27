@@ -66,37 +66,42 @@ router.get('/', async (req, res) => {
 
 // POST /api/admin/invitations
 router.post('/invitations', async (req, res) => {
-  const { email, firstName, lastName, role, teamIds, expiryHours = 48 } = req.body as {
-    email: string; firstName?: string; lastName?: string;
-    role: string; teamIds?: string[]; expiryHours?: number;
-  };
+  try {
+    const { email, firstName, lastName, role, teamIds, expiryHours = 48 } = req.body as {
+      email: string; firstName?: string; lastName?: string;
+      role: string; teamIds?: string[]; expiryHours?: number;
+    };
 
-  const token = randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + expiryHours * 3600 * 1000);
+    if (!email || !role) { res.status(400).json({ error: 'email and role are required' }); return; }
+    if (!req.adminUser.orgId) { res.status(400).json({ error: 'Your account has no organisation assigned' }); return; }
 
-  const [inv] = await query<{ id: string }>(
-    `INSERT INTO user_invitations
-       (org_id, invited_by, email, first_name, last_name, intended_role, intended_teams, token, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING id`,
-    [req.adminUser.orgId, req.adminUser.id, email, firstName, lastName,
-     role, teamIds ?? [], token, expiresAt.toISOString()],
-  );
+    const token = randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + expiryHours * 3600 * 1000);
 
-  await writeAudit(req.adminUser.id, 'ADMIN_INVITATION_CREATED', { email, role, invitationId: inv.id });
+    const [inv] = await query<{ id: string }>(
+      `INSERT INTO user_invitations
+         (org_id, invited_by, email, first_name, last_name, intended_role, intended_teams, token, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id`,
+      [req.adminUser.orgId, req.adminUser.id, email, firstName ?? null, lastName ?? null,
+       role, teamIds ?? [], token, expiresAt.toISOString()],
+    );
 
-  const [orgRow] = await query<{ name: string }>(`SELECT name FROM organizations WHERE id = $1`, [req.adminUser.orgId]).catch(() => []);
-  sendInvitationEmail({
-    to: email,
-    firstName,
-    inviterName: req.adminUser.displayName ?? req.adminUser.email,
-    orgName: orgRow?.name ?? 'BloomTerminal',
-    token,
-    role,
-    expiryHours,
-  }).catch(err => console.error('[invite] Email send failed:', err.message));
+    await writeAudit(req.adminUser.id, 'ADMIN_INVITATION_CREATED', { email, role, invitationId: inv.id });
 
-  res.status(201).json({ invitation: inv, token });
+    const [orgRow] = await query<{ name: string }>(`SELECT name FROM organizations WHERE id = $1`, [req.adminUser.orgId]).catch(() => []);
+    sendInvitationEmail({
+      to: email, firstName,
+      inviterName: req.adminUser.displayName ?? req.adminUser.email,
+      orgName: orgRow?.name ?? 'BloomTerminal',
+      token, role, expiryHours,
+    }).catch(err => console.error('[invite] Email send failed:', err.message));
+
+    res.status(201).json({ invitation: inv, token });
+  } catch (err) {
+    console.error('[invite] POST /invitations error:', err);
+    res.status(500).json({ error: (err as Error).message ?? 'Failed to create invitation' });
+  }
 });
 
 // GET /api/admin/invitations
