@@ -1,15 +1,14 @@
 import { Worker, Queue } from 'bullmq';
-import IORedis from 'ioredis';
 import { pollAllFeeds } from '../services/news/rssPoller';
 import { fetchMarketNews } from '../services/news/polygonNews';
 import { tagRecentUntagged } from '../services/news/newsSentimentTagger';
 
-const connection = new IORedis({
+const connection = {
   host:     process.env.REDIS_HOST     ?? 'localhost',
   port:     parseInt(process.env.REDIS_PORT ?? '6379'),
   password: process.env.REDIS_PASSWORD || undefined,
-  maxRetriesPerRequest: null,
-});
+  maxRetriesPerRequest: null as null,
+};
 
 export const newsQueue = new Queue('news', { connection });
 
