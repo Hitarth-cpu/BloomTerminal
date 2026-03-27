@@ -11,8 +11,8 @@ export const pool = new Pool({
   max:      Number(process.env.POSTGRES_POOL_MAX ?? 20),
   idleTimeoutMillis:       30_000,
   connectionTimeoutMillis:  5_000,
-  ssl: process.env.NODE_ENV === 'production'
-    ? { rejectUnauthorized: true }
+  ssl: (process.env.POSTGRES_SSL === 'true' || process.env.NODE_ENV === 'production')
+    ? { rejectUnauthorized: false }
     : false,
 });
 

@@ -4,16 +4,8 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/rss-proxy",
-      "destination": "/api/rss-proxy"
-    },
-    {
-      "source": "/api/market-data/(.*)",
-      "destination": "/api/market-data/$1"
-    },
-    {
-      "source": "/api/bootstrap",
-      "destination": "/api/bootstrap"
+      "source": "/api/(.*)",
+      "destination": "https://bloomterminal-api.up.railway.app/api/$1"
     },
     {
       "source": "/((?!api|assets).*)",
@@ -25,26 +17,20 @@
       "source": "/api/(.*)",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS" },
         { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
-      ]
-    },
-    {
-      "source": "/",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
-      ]
-    },
-    {
-      "source": "/index.html",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
     },
     {
       "source": "/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]
     }
   ]

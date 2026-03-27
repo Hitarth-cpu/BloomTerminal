@@ -41,7 +41,10 @@ app.use(helmet({
 
 // CORS
 const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? (process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
+  ? [
+      process.env.FRONTEND_URL,
+      'https://bloom-terminal.vercel.app',
+    ].filter(Boolean) as string[]
   : ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173'];
 
 app.use(cors({
