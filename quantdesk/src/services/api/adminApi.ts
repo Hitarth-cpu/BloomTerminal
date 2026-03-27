@@ -15,6 +15,7 @@ class AdminApiClient {
     const res = await fetch(`/api/admin${path}`, { ...init, headers });
     if (res.status === 401) {
       useAdminAuthStore.getState().clearAdmin();
+      window.location.replace('/admin/login?reason=session_expired');
       throw new Error('Admin session expired');
     }
     if (!res.ok) {
