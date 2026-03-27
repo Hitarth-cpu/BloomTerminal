@@ -89,7 +89,7 @@ export function InvitePage() {
     if (password !== confirmPw) { setSubmitErr('Passwords do not match'); return; }
     setSubmitting(true); setSubmitErr('');
     try {
-      const user = await createAccount(invite.email, password, displayName || invite.email.split('@')[0]);
+      await createAccount(invite.email, password, displayName || invite.email.split('@')[0]);
       // Get Firebase ID token from the auth store
       const { getFirebaseApp } = await import('../services/auth/authService');
       const { getAuth } = await import('firebase/auth');
