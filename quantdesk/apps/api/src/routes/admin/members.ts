@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { query, transaction } from '../../db/postgres';
 import { randomBytes } from 'crypto';
 import { requireAdminAuth } from '../../middleware/requireAdminAuth';
+import { sendInvitationEmail } from '../../services/email/emailService';
 
 const router = Router();
 router.use(requireAdminAuth);
@@ -165,6 +166,19 @@ router.post('/invitations', async (req, res) => {
   );
 
   await writeAudit(req.adminUser.id, 'ADMIN_INVITATION_CREATED', { email, role, invitationId: inv.id });
+
+  // Send invitation email (non-blocking — don't fail if email fails)
+  const [orgRow] = await query<{ name: string }>(`SELECT name FROM organizations WHERE id = $1`, [req.adminUser.orgId]).catch(() => []);
+  sendInvitationEmail({
+    to: email,
+    firstName,
+    inviterName: req.adminUser.displayName ?? req.adminUser.email,
+    orgName: orgRow?.name ?? 'BloomTerminal',
+    token,
+    role,
+    expiryHours,
+  }).catch(err => console.error('[invite] Email send failed:', err.message));
+
   res.status(201).json({ invitation: inv, token });
 });
 

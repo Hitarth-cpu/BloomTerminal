@@ -17,6 +17,7 @@ import TraderPerformancePage from './pages/admin/TraderPerformancePage';
 import ChatPermissionsPage   from './pages/admin/ChatPermissionsPage';
 import AdminAskbPage         from './pages/admin/AdminAskbPage';
 import AuditLogPage          from './pages/admin/AuditLogPage';
+import { InvitePage }        from './pages/InvitePage';
 
 // ─── Standard app ─────────────────────────────────────────────────────────────
 
@@ -83,6 +84,9 @@ export default function App() {
           <Route path="settings/integrations" element={<Navigate to="/admin" replace />} />
           <Route path="*"                    element={<Navigate to="/admin" replace />} />
         </Route>
+
+        {/* Invitation acceptance */}
+        <Route path="/invite" element={<InvitePage />} />
 
         {/* Standard trader/analyst app */}
         <Route path="/*" element={<StandardApp />} />
