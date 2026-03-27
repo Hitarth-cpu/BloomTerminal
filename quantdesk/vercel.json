@@ -5,7 +5,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://bloomterminal-api.up.railway.app/api/$1"
+      "destination": "https://hitarth-cpu-bloomterminal-api.hf.space/api/$1"
     },
     {
       "source": "/((?!api|assets).*)",
