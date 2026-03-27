@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import { query, transaction } from '../../db/postgres';
 import { randomBytes } from 'crypto';
 import { requireAdminAuth } from '../../middleware/requireAdminAuth';
@@ -63,6 +62,68 @@ router.get('/', async (req, res) => {
   );
 
   res.json({ members, total: parseInt(count), page: parseInt(page) });
+});
+
+// POST /api/admin/invitations
+router.post('/invitations', async (req, res) => {
+  const { email, firstName, lastName, role, teamIds, expiryHours = 48 } = req.body as {
+    email: string; firstName?: string; lastName?: string;
+    role: string; teamIds?: string[]; expiryHours?: number;
+  };
+
+  const token = randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + expiryHours * 3600 * 1000);
+
+  const [inv] = await query<{ id: string }>(
+    `INSERT INTO user_invitations
+       (org_id, invited_by, email, first_name, last_name, intended_role, intended_teams, token, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING id`,
+    [req.adminUser.orgId, req.adminUser.id, email, firstName, lastName,
+     role, teamIds ?? [], token, expiresAt.toISOString()],
+  );
+
+  await writeAudit(req.adminUser.id, 'ADMIN_INVITATION_CREATED', { email, role, invitationId: inv.id });
+
+  const [orgRow] = await query<{ name: string }>(`SELECT name FROM organizations WHERE id = $1`, [req.adminUser.orgId]).catch(() => []);
+  sendInvitationEmail({
+    to: email,
+    firstName,
+    inviterName: req.adminUser.displayName ?? req.adminUser.email,
+    orgName: orgRow?.name ?? 'BloomTerminal',
+    token,
+    role,
+    expiryHours,
+  }).catch(err => console.error('[invite] Email send failed:', err.message));
+
+  res.status(201).json({ invitation: inv, token });
+});
+
+// GET /api/admin/invitations
+router.get('/invitations', async (req, res) => {
+  const invitations = await query<{
+    id: string; email: string; first_name: string; last_name: string;
+    intended_role: string; status: string; expires_at: string; created_at: string;
+    invited_by_name: string;
+  }>(
+    `SELECT i.id, i.email, i.first_name, i.last_name, i.intended_role, i.status,
+            i.expires_at, i.created_at, u.display_name AS invited_by_name
+     FROM user_invitations i
+     JOIN users u ON u.id = i.invited_by
+     WHERE i.org_id = $1 ORDER BY i.created_at DESC`,
+    [req.adminUser.orgId],
+  );
+  res.json({ invitations });
+});
+
+// DELETE /api/admin/invitations/:id
+router.delete('/invitations/:id', async (req, res) => {
+  await query(
+    `UPDATE user_invitations SET status = 'revoked' WHERE id = $1 AND org_id = $2`,
+    [req.params.id, req.adminUser.orgId],
+  );
+  await writeAudit(req.adminUser.id, 'ADMIN_INVITATION_REVOKED', { invitationId: req.params.id });
+  res.json({ ok: true });
 });
 
 // GET /api/admin/members/:userId
@@ -143,69 +204,6 @@ router.delete('/:userId', async (req, res) => {
   // Revoke all sessions
   await query(`UPDATE admin_sessions SET is_revoked = true WHERE user_id = $1`, [userId]);
   await writeAudit(req.adminUser.id, 'ADMIN_MEMBER_SUSPENDED', { targetUserId: userId });
-  res.json({ ok: true });
-});
-
-// POST /api/admin/invitations
-router.post('/invitations', async (req, res) => {
-  const { email, firstName, lastName, role, teamIds, expiryHours = 48 } = req.body as {
-    email: string; firstName?: string; lastName?: string;
-    role: string; teamIds?: string[]; expiryHours?: number;
-  };
-
-  const token = randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + expiryHours * 3600 * 1000);
-
-  const [inv] = await query<{ id: string }>(
-    `INSERT INTO user_invitations
-       (org_id, invited_by, email, first_name, last_name, intended_role, intended_teams, token, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     RETURNING id`,
-    [req.adminUser.orgId, req.adminUser.id, email, firstName, lastName,
-     role, teamIds ?? [], token, expiresAt.toISOString()],
-  );
-
-  await writeAudit(req.adminUser.id, 'ADMIN_INVITATION_CREATED', { email, role, invitationId: inv.id });
-
-  // Send invitation email (non-blocking — don't fail if email fails)
-  const [orgRow] = await query<{ name: string }>(`SELECT name FROM organizations WHERE id = $1`, [req.adminUser.orgId]).catch(() => []);
-  sendInvitationEmail({
-    to: email,
-    firstName,
-    inviterName: req.adminUser.displayName ?? req.adminUser.email,
-    orgName: orgRow?.name ?? 'BloomTerminal',
-    token,
-    role,
-    expiryHours,
-  }).catch(err => console.error('[invite] Email send failed:', err.message));
-
-  res.status(201).json({ invitation: inv, token });
-});
-
-// GET /api/admin/invitations
-router.get('/invitations', async (req, res) => {
-  const invitations = await query<{
-    id: string; email: string; first_name: string; last_name: string;
-    intended_role: string; status: string; expires_at: string; created_at: string;
-    invited_by_name: string;
-  }>(
-    `SELECT i.id, i.email, i.first_name, i.last_name, i.intended_role, i.status,
-            i.expires_at, i.created_at, u.display_name AS invited_by_name
-     FROM user_invitations i
-     JOIN users u ON u.id = i.invited_by
-     WHERE i.org_id = $1 ORDER BY i.created_at DESC`,
-    [req.adminUser.orgId],
-  );
-  res.json({ invitations });
-});
-
-// DELETE /api/admin/invitations/:id
-router.delete('/invitations/:id', async (req, res) => {
-  await query(
-    `UPDATE user_invitations SET status = 'revoked' WHERE id = $1 AND org_id = $2`,
-    [req.params.id, req.adminUser.orgId],
-  );
-  await writeAudit(req.adminUser.id, 'ADMIN_INVITATION_REVOKED', { invitationId: req.params.id });
   res.json({ ok: true });
 });
 
