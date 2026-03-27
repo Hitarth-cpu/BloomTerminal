@@ -99,7 +99,7 @@ export async function signInWithGoogle(): Promise<AuthUser> {
   };
   const idToken = await result.user.getIdToken();
   const token   = await syncToBackend(user, idToken);
-  useAuthStore.getState().setUser(user, token ?? undefined);
+  useAuthStore.getState().setUser(user, token ?? idToken);
   return user;
 }
 
@@ -124,7 +124,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
   };
   const idToken = await result.user.getIdToken();
   const token   = await syncToBackend(user, idToken);
-  useAuthStore.getState().setUser(user, token ?? undefined);
+  useAuthStore.getState().setUser(user, token ?? idToken);
   return user;
 }
 
@@ -154,7 +154,7 @@ export async function createAccount(
   };
   const idToken = await result.user.getIdToken();
   const token   = await syncToBackend(user, idToken);
-  useAuthStore.getState().setUser(user, token ?? undefined);
+  useAuthStore.getState().setUser(user, token ?? idToken);
   return user;
 }
 
@@ -181,7 +181,7 @@ export function onAuthStateChanged(cb: (user: AuthUser | null) => void): () => v
     const idToken = await fbUser.getIdToken().catch(() => null);
     if (idToken) {
       const token = await syncToBackend(user, idToken);
-      useAuthStore.getState().setUser(user, token ?? undefined);
+      useAuthStore.getState().setUser(user, token ?? idToken);
     } else {
       useAuthStore.getState().setUser(user, undefined);
     }
