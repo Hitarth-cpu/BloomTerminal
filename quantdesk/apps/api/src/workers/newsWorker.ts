@@ -3,13 +3,27 @@ import { pollAllFeeds } from '../services/news/rssPoller';
 import { fetchMarketNews } from '../services/news/polygonNews';
 import { tagRecentUntagged } from '../services/news/newsSentimentTagger';
 
-const connection = {
-  host:     process.env.REDIS_HOST     ?? 'localhost',
-  port:     parseInt(process.env.REDIS_PORT ?? '6379'),
-  password: process.env.REDIS_PASSWORD || undefined,
-  tls:      process.env.REDIS_TLS === 'true' ? {} : undefined,
-  maxRetriesPerRequest: null as null,
-};
+const redisUrl = process.env.REDIS_URL;
+const connection = redisUrl
+  ? (() => {
+      const u = new URL(redisUrl);
+      return {
+        host:     u.hostname,
+        port:     parseInt(u.port || '6379'),
+        password: u.password || undefined,
+        tls:      u.protocol === 'rediss:' ? { rejectUnauthorized: false } : undefined,
+        maxRetriesPerRequest: null as null,
+        enableReadyCheck: false,
+      };
+    })()
+  : {
+      host:     process.env.REDIS_HOST     ?? 'localhost',
+      port:     parseInt(process.env.REDIS_PORT ?? '6379'),
+      password: process.env.REDIS_PASSWORD || undefined,
+      tls:      process.env.REDIS_TLS === 'true' ? { rejectUnauthorized: false } : undefined,
+      maxRetriesPerRequest: null as null,
+      enableReadyCheck: false,
+    };
 
 export const newsQueue = new Queue('news', { connection });
 
