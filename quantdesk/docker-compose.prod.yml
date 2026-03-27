@@ -1,0 +1,56 @@
+version: '3.9'
+
+# Production overrides — apply with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+
+  postgres:
+    restart: always
+    ports: []                         # do not expose port externally in prod
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  redis:
+    restart: always
+    ports: []
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --requirepass ${REDIS_PASSWORD}
+      --tls-port 6380
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  mongo:
+    restart: always
+    ports: []
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  # API service (add your production API image here)
+  api:
+    image: ${API_IMAGE:-quantdesk-api:latest}
+    container_name: quantdesk-api
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      MONGO_HOST: mongo
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
