@@ -58,7 +58,7 @@ router.get('/', async (req, res) => {
   );
 
   const [{ count }] = await query<{ count: string }>(
-    `SELECT COUNT(*) FROM users u WHERE ${conditions.slice(0, -2).join(' AND ')} AND u.is_org_visible = true`,
+    `SELECT COUNT(*) FROM users u WHERE ${conditions.join(' AND ')} AND u.is_org_visible = true`,
     params.slice(0, -2),
   );
 
