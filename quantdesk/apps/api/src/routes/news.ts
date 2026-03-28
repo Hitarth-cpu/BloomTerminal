@@ -49,16 +49,23 @@ router.get('/', async (req, res) => {
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  const items = await query(
-    `SELECT id, title, summary, url, source, published_at, tickers, categories,
-            sentiment, ai_summary, is_breaking, image_url
-     FROM news_items ${where}
-     ORDER BY published_at DESC
-     LIMIT $${idx++} OFFSET $${idx}`,
-    [...params, limitNum, offset],
-  );
+  const limitIdx  = idx;
+  const offsetIdx = idx + 1;
 
-  res.json({ items, page: pageNum, limit: limitNum });
+  try {
+    const items = await query(
+      `SELECT id, title, summary, url, source, published_at, tickers, categories,
+              sentiment, ai_summary, is_breaking, image_url
+       FROM news_items ${where}
+       ORDER BY published_at DESC
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      [...params, limitNum, offset],
+    );
+    res.json({ items, page: pageNum, limit: limitNum });
+  } catch (err) {
+    console.error('[news] query failed', err);
+    res.json({ items: [], page: pageNum, limit: limitNum });
+  }
 });
 
 // GET /api/news/ticker/:ticker

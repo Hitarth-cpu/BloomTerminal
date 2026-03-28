@@ -148,4 +148,70 @@ async function _createDefaultPersonalization(client: { query: Function }, userId
   );
 }
 
+/**
+ * Ensures a user has an org_id assigned.
+ * Priority: email domain match → first active org → create solo org.
+ * Safe to call on every request — returns immediately if user already has org_id.
+ */
+export async function ensureOrgAssigned(user: User): Promise<string | null> {
+  if (user.org_id) return user.org_id;
+
+  const emailDomain = user.email?.split('@')[1];
+
+  // 1. Try domain match against existing org
+  if (emailDomain) {
+    const [domainOrg] = await query<{ id: string }>(
+      `SELECT id FROM organizations WHERE domain = $1 AND is_active = true LIMIT 1`,
+      [emailDomain],
+    ).catch(() => [] as { id: string }[]);
+
+    if (domainOrg) {
+      await query(
+        `UPDATE users SET org_id = $1, org_role = 'member' WHERE id = $2`,
+        [domainOrg.id, user.id],
+      ).catch(() => {});
+      // Create default groups/personalization in background — non-blocking
+      query(
+        `INSERT INTO contact_groups (owner_id, name, color, sort_order) VALUES
+         ($1,'Internal','#ff6600',0),($1,'Counterparties','#00c8ff',1),
+         ($1,'Research','#a8ff78',2),($1,'Brokers','#f7d060',3)
+         ON CONFLICT (owner_id, name) DO NOTHING`,
+        [user.id],
+      ).catch(() => {});
+      query(
+        `INSERT INTO user_personalization (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
+        [user.id],
+      ).catch(() => {});
+      return domainOrg.id;
+    }
+  }
+
+  // 2. Fall back to first active org (single-tenant / demo deployments)
+  const [firstOrg] = await query<{ id: string }>(
+    `SELECT id FROM organizations WHERE is_active = true ORDER BY created_at ASC LIMIT 1`,
+    [],
+  ).catch(() => [] as { id: string }[]);
+
+  if (firstOrg) {
+    await query(
+      `UPDATE users SET org_id = $1, org_role = 'member' WHERE id = $2`,
+      [firstOrg.id, user.id],
+    ).catch(() => {});
+    query(
+      `INSERT INTO contact_groups (owner_id, name, color, sort_order) VALUES
+       ($1,'Internal','#ff6600',0),($1,'Counterparties','#00c8ff',1),
+       ($1,'Research','#a8ff78',2),($1,'Brokers','#f7d060',3)
+       ON CONFLICT (owner_id, name) DO NOTHING`,
+      [user.id],
+    ).catch(() => {});
+    query(
+      `INSERT INTO user_personalization (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
+      [user.id],
+    ).catch(() => {});
+    return firstOrg.id;
+  }
+
+  return null;
+}
+
 export { findById, upsertFromFirebase, updateLastLogin, recordAudit } from '../db/userService';
