@@ -6,7 +6,7 @@ const router = Router();
 router.use(requireAdminAuth);
 
 // GET /api/admin/broadcasts
-router.get('/', async (req, res) => {
+router.get('/broadcasts', async (req, res) => {
   try {
     const broadcasts = await query<{
       id: string; title: string; body_template: string; priority: string;
@@ -32,7 +32,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/admin/broadcasts — create and immediately send
-router.post('/', async (req, res) => {
+router.post('/broadcasts', async (req, res) => {
   try {
     const { title, body, priority = 'normal', audienceType = 'org_wide' } = req.body as {
       title: string; body: string; priority?: string; audienceType?: string;
