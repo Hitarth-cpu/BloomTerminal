@@ -167,7 +167,9 @@ export async function ensureOrgAssigned(user: User): Promise<string | null> {
 
     if (domainOrg) {
       await query(
-        `UPDATE users SET org_id = $1, org_role = 'member' WHERE id = $2`,
+        `UPDATE users SET org_id = $1,
+         org_role = COALESCE(NULLIF(org_role, ''), 'member')
+         WHERE id = $2`,
         [domainOrg.id, user.id],
       ).catch(() => {});
       // Create default groups/personalization in background — non-blocking
@@ -194,7 +196,9 @@ export async function ensureOrgAssigned(user: User): Promise<string | null> {
 
   if (firstOrg) {
     await query(
-      `UPDATE users SET org_id = $1, org_role = 'member' WHERE id = $2`,
+      `UPDATE users SET org_id = $1,
+       org_role = COALESCE(NULLIF(org_role, ''), 'member')
+       WHERE id = $2`,
       [firstOrg.id, user.id],
     ).catch(() => {});
     query(
