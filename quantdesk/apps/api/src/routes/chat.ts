@@ -4,7 +4,7 @@ import {
   softDeleteMessage, savePublicKey, getPublicKey,
   type NewMessage,
 } from '../services/db/chatService';
-import { publishMessage } from '../services/cache/pubsub';
+import { publishMessage, redisPublisher } from '../services/cache/pubsub';
 import { query } from '../db/postgres';
 
 const router = Router();
@@ -58,6 +58,13 @@ router.get('/dm/:contactUserId', async (req, res) => {
     INSERT INTO chat_members (room_id, user_id)
     VALUES ($1, $2), ($1, $3) ON CONFLICT DO NOTHING
   `, [room.id, myId, contactUserId]);
+
+  // Push both users to subscribe to the new room channel in real-time
+  const subEvent = JSON.stringify({ type: 'SUBSCRIBE_ROOM', roomId: room.id });
+  await Promise.all([
+    redisPublisher.publish(`user:notifications:${myId}`, subEvent),
+    redisPublisher.publish(`user:notifications:${contactUserId}`, subEvent),
+  ]).catch(() => {});
 
   res.json({ roomId: room.id });
 });

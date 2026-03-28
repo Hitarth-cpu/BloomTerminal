@@ -105,6 +105,14 @@ function ensureMessageHandler(): void {
           channel === `user:broadcasts:${uid}` ||
           channel === `user:presence:${uid}`
         ) {
+          // Server-initiated room subscription (e.g. new DM room created)
+          if (event.type === 'SUBSCRIBE_ROOM' && typeof event.roomId === 'string') {
+            const roomId = event.roomId as string;
+            redisSubscriber.subscribe(`chat:${roomId}`).catch(() => {});
+            if (!userRooms.has(uid)) userRooms.set(uid, new Set());
+            userRooms.get(uid)!.add(roomId);
+            return; // Don't forward to client
+          }
           sendToUser(uid, event);
         }
       }
@@ -146,16 +154,28 @@ async function setOffline(userId: string): Promise<void> {
 async function fanOutPresence(userId: string, status: 'online' | 'away' | 'offline'): Promise<void> {
   try {
     const { query } = await import('../db/postgres');
-    const contacts = await query<{ contact_user_id: string }>(
-      'SELECT contact_user_id FROM contacts WHERE owner_id = $1 AND is_blocked = false',
+    // Fan out to everyone who shares a DM room with this user (bidirectional)
+    const peers = await query<{ user_id: string }>(
+      `SELECT DISTINCT cm2.user_id
+       FROM chat_members cm1
+       JOIN chat_members cm2 ON cm1.room_id = cm2.room_id
+       WHERE cm1.user_id = $1 AND cm2.user_id <> $1`,
       [userId],
     );
+    // Also fan out to contacts list (for users who haven't chatted yet)
+    const contactPeers = await query<{ contact_user_id: string }>(
+      `SELECT contact_user_id FROM contacts
+       WHERE (owner_id = $1 OR contact_user_id = $1) AND is_blocked = false`,
+      [userId],
+    );
+    const allPeerIds = new Set([
+      ...peers.map(p => p.user_id),
+      ...contactPeers.map(c => c.contact_user_id === userId ? c.contact_user_id : c.contact_user_id),
+    ]);
     const event: WsEvent = { type: 'USER_PRESENCE_UPDATE', userId, status };
-    for (const { contact_user_id } of contacts) {
-      await redisPublisher.publish(
-        `user:presence:${contact_user_id}`,
-        JSON.stringify(event),
-      );
+    for (const peerId of allPeerIds) {
+      if (peerId === userId) continue;
+      await redisPublisher.publish(`user:presence:${peerId}`, JSON.stringify(event));
     }
   } catch { /* non-fatal */ }
 }
@@ -226,6 +246,22 @@ export function attachWebSocket(server: Server): WebSocketServer {
           await setOnline(userId);
           resetHeartbeat();
           ws.send(JSON.stringify({ type: 'HEARTBEAT_ACK', ts: Date.now() }));
+        }
+        // Client requests subscription to a specific chat room
+        if (msg.type === 'SUBSCRIBE_ROOM' && typeof msg.roomId === 'string') {
+          const roomId = msg.roomId as string;
+          try {
+            const { query } = await import('../db/postgres');
+            const [member] = await query<{ room_id: string }>(
+              'SELECT room_id FROM chat_members WHERE room_id = $1 AND user_id = $2',
+              [roomId, userId],
+            );
+            if (member) {
+              await redisSubscriber.subscribe(`chat:${roomId}`);
+              if (!userRooms.has(userId)) userRooms.set(userId, new Set());
+              userRooms.get(userId)!.add(roomId);
+            }
+          } catch { /* non-fatal */ }
         }
       } catch { /* ignore malformed messages */ }
     });
