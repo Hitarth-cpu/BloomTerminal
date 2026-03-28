@@ -235,6 +235,37 @@ export interface AdminSessionEntry {
   ip_address: string | null; created_at: string; last_active: string; expires_at: string;
 }
 
+// ─── Broadcasts ───────────────────────────────────────────────────────────────
+
+export interface AdminBroadcast {
+  id: string; title: string; body_template: string; priority: string;
+  status: string; audience_type: string; created_at: string; sent_at: string | null;
+  sender_name: string; delivery_count: number;
+}
+
+export async function fetchAdminBroadcasts() {
+  return adminApi.get<{ broadcasts: AdminBroadcast[] }>('/broadcasts');
+}
+
+export async function sendAdminBroadcast(data: { title: string; body: string; priority?: string; audienceType?: string }) {
+  return adminApi.post<{ broadcast: { id: string }; recipientCount: number }>('/broadcasts', data);
+}
+
+// ─── Org Settings ─────────────────────────────────────────────────────────────
+
+export interface AdminOrg {
+  id: string; name: string; display_name: string; slug: string;
+  plan: string; domain: string | null; logo_url: string | null; created_at: string;
+}
+
+export async function fetchAdminOrg() {
+  return adminApi.get<{ org: AdminOrg; stats: { member_count: string; admin_count: string } }>('/org');
+}
+
+export async function updateAdminOrg(data: { name?: string; displayName?: string; domain?: string }) {
+  return adminApi.patch<{ ok: boolean }>('/org', data);
+}
+
 // ─── AI ───────────────────────────────────────────────────────────────────────
 
 export function streamAdminAi(
