@@ -3,6 +3,7 @@ import { verifyIdToken, type DecodedToken } from '../services/auth/firebaseAdmin
 import { upsertFromFirebase, findById, recordAudit } from '../services/db/userService';
 import type { User } from '../services/db/userService';
 import { verifyDevToken } from '../routes/auth';
+import { ensureOrgAssigned } from '../services/auth/onboardingService';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -38,6 +39,10 @@ export async function requireAuth(
     try {
       const user = await findById(devUserId);
       if (!user || !user.is_active) { res.status(401).json({ error: 'Invalid dev token' }); return; }
+      if (!user.org_id) {
+        const orgId = await ensureOrgAssigned(user).catch(() => null);
+        if (orgId) user.org_id = orgId;
+      }
       req.user        = user;
       req.firebaseUid = user.firebase_uid;
       next();
@@ -69,6 +74,12 @@ export async function requireAuth(
     if (!user.is_active) {
       res.status(403).json({ error: 'Account deactivated' });
       return;
+    }
+
+    // Auto-assign org if missing — required for contacts, teams, broadcasts, chat, etc.
+    if (!user.org_id) {
+      const orgId = await ensureOrgAssigned(user).catch(() => null);
+      if (orgId) user.org_id = orgId;
     }
 
     req.user        = user;
