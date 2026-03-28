@@ -29,11 +29,17 @@ function connect(token: string) {
   if (globalWs && globalWs.readyState <= WebSocket.OPEN) return;
   currentToken = token;
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const host = window.location.host;
-  // In dev, API runs on :3001 while frontend is on :5173
-  const apiHost = import.meta.env.DEV ? `${window.location.hostname}:3001` : host;
-  const url = `${protocol}//${apiHost}/ws?token=${encodeURIComponent(token)}`;
+  // In dev: connect to local API server on :3001
+  // In prod: Vercel cannot proxy WebSockets, so connect directly to the HF Space API.
+  //          Set VITE_WS_URL=wss://hitarth-cpu-bloomterminal-api.hf.space/ws in Vercel env vars.
+  let url: string;
+  if (import.meta.env.DEV) {
+    url = `ws://${window.location.hostname}:3001/ws?token=${encodeURIComponent(token)}`;
+  } else {
+    const wsBase = (import.meta.env.VITE_WS_URL as string | undefined)
+      ?? `wss://${window.location.host}/ws`;
+    url = `${wsBase}?token=${encodeURIComponent(token)}`;
+  }
 
   globalWs = new WebSocket(url);
 

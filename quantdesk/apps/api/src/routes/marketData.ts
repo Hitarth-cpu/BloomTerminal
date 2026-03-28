@@ -158,7 +158,7 @@ router.get('/finnhub/quote', async (req: Request, res: Response) => {
   finnhubRequestTimes.push(now);
 
   const cacheKey = `finnhub:${symbol}`;
-  const cached = getCached(cacheKey, 15_000);
+  const cached = getCached(cacheKey, 60_000); // 60s cache — reduces Finnhub rate limit hits
   if (cached) {
     res.json(cached);
     return;
