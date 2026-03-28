@@ -308,6 +308,8 @@ function EncryptedContent({ payload, chatKey }: { payload: EncryptedPayload; cha
 
   useEffect(() => {
     if (!chatKey) { setPlaintext(null); return; }
+    // Guard against legacy PSK messages or malformed payloads that lack the `ct` field
+    if (!payload?.ct || !payload?.iv) { setError(true); return; }
     setPlaintext(null); setError(false);
     decryptMessage(payload, chatKey).then(setPlaintext).catch(() => setError(true));
   }, [payload, chatKey]);
@@ -381,7 +383,8 @@ export function IBChat() {
   const [chatKeys,   setChatKeys]  = useState<Map<string, CryptoKey>>(new Map());
   const [cryptoReady, setCryptoReady] = useState(false);
   const [cryptoError, setCryptoError] = useState<string | null>(null);
-  const messagesEnd = useRef<HTMLDivElement>(null);
+  const messagesEnd    = useRef<HTMLDivElement>(null);
+  const cryptoRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Presence: userId → 'online' | 'away' | 'offline'
   const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
@@ -418,13 +421,46 @@ export function IBChat() {
       .catch(() => { /* non-fatal — will retry when getOrCreateChatKey is called */ });
   }, []);
 
-  // ── Crypto key per chat ────────────────────────────────────────────────────
+  // ── Crypto key per chat (retries while peer's key is pending) ────────────
   useEffect(() => {
     if (!activeContactId) return;
-    setCryptoReady(false); setCryptoError(null);
-    getOrCreateChatKey(activeContactId)
-      .then(key => { setChatKeys(prev => new Map(prev).set(activeContactId, key)); setCryptoReady(true); })
-      .catch(err => { setCryptoError((err as Error).message ?? 'Crypto init failed'); setCryptoReady(true); });
+    let cancelled = false;
+    let retries = 0;
+
+    if (cryptoRetryRef.current) clearTimeout(cryptoRetryRef.current);
+    setCryptoReady(false);
+    setCryptoError(null);
+
+    const tryGetKey = () => {
+      getOrCreateChatKey(activeContactId)
+        .then(key => {
+          if (cancelled) return;
+          setChatKeys(prev => new Map(prev).set(activeContactId, key));
+          setCryptoReady(true);
+          setCryptoError(null);
+        })
+        .catch(err => {
+          if (cancelled) return;
+          const msg = (err as Error).message ?? 'Crypto init failed';
+          // Peer hasn't published their ECDH key yet — retry up to 12 × 5 s = 1 min
+          if (msg.includes('Key exchange pending') && retries < 12) {
+            retries++;
+            setCryptoError('WAITING FOR PEER KEY');
+            setCryptoReady(true); // allow UI to update status indicator
+            cryptoRetryRef.current = setTimeout(tryGetKey, 5_000);
+          } else {
+            setCryptoError(msg);
+            setCryptoReady(true);
+          }
+        });
+    };
+
+    tryGetKey();
+
+    return () => {
+      cancelled = true;
+      if (cryptoRetryRef.current) { clearTimeout(cryptoRetryRef.current); cryptoRetryRef.current = null; }
+    };
   }, [activeContactId]);
 
   // ── Auto-scroll on new messages ────────────────────────────────────────────
@@ -454,7 +490,8 @@ export function IBChat() {
         const roomId = await getRoomId(activeContactId);
         const msgs = await apiFetchMessages(roomId);
         if (cancelled) return;
-        const mapped: ChatMessage[] = msgs.map(m => ({
+        // Server returns newest-first for pagination; reverse so newest is at bottom
+        const mapped: ChatMessage[] = msgs.slice().reverse().map(m => ({
           id:         m._id,
           chatId:     activeContactId,
           senderId:   m.senderId === user?.uid ? 'me' : m.senderId,
@@ -479,12 +516,19 @@ export function IBChat() {
     setInput('');
 
     const activeChatKey = chatKeys.get(activeContactId);
-    let encrypted: EncryptedPayload | undefined;
 
-    if (activeChatKey) {
-      try {
-        encrypted = await encryptMessage(plaintext, activeChatKey, { chatId: activeContactId, senderId: 'me' });
-      } catch { /* encryption failure — fall through to plaintext */ }
+    // Require encryption — never send plaintext if key isn't ready
+    if (!activeChatKey) {
+      setInput(plaintext); // restore input
+      return;
+    }
+
+    let encrypted: EncryptedPayload;
+    try {
+      encrypted = await encryptMessage(plaintext, activeChatKey, { chatId: activeContactId, senderId: 'me' });
+    } catch {
+      setInput(plaintext); // restore input on failure
+      return;
     }
 
     const msg: ChatMessage = {
@@ -492,7 +536,7 @@ export function IBChat() {
       chatId:     activeContactId,
       senderId:   'me',
       senderName: user?.displayName ?? 'You',
-      content:    encrypted ? '' : plaintext,
+      content:    '',
       timestamp:  Date.now(),
       type:       'text',
       encrypted,
@@ -509,7 +553,7 @@ export function IBChat() {
       const roomId = await getRoomId(activeContactId);
       await apiSendMessage(roomId, {
         messageType: 'text',
-        encrypted: (encrypted as unknown as { iv: string; ciphertext: string; tag: string } | undefined) ?? { iv: '', ciphertext: btoa(plaintext), tag: '' },
+        encrypted: encrypted as unknown as { iv: string; ciphertext: string; tag: string },
         aad: { chatRoomId: roomId, senderId: user?.uid ?? 'me', messageType: 'text' },
       });
     } catch (err) {
@@ -764,8 +808,8 @@ export function IBChat() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {cryptoError ? (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--negative)' }}>
-                      <ShieldAlert size={9} /> CRYPTO ERROR
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'var(--font-mono)', fontSize: 8, color: cryptoError === 'WAITING FOR PEER KEY' ? 'var(--warning)' : 'var(--negative)' }}>
+                      <ShieldAlert size={9} /> {cryptoError === 'WAITING FOR PEER KEY' ? 'WAITING FOR PEER KEY…' : 'CRYPTO ERROR'}
                     </span>
                   ) : cryptoReady ? (
                     <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--positive)' }}>
@@ -799,16 +843,21 @@ export function IBChat() {
                 <input
                   className="terminal-input"
                   style={{ flex: 1 }}
-                  placeholder={cryptoReady ? 'Message — encrypted before send' : 'Initialising encryption…'}
+                  placeholder={
+                    !cryptoReady           ? 'Initialising encryption…' :
+                    cryptoError === 'WAITING FOR PEER KEY' ? 'Waiting for peer to join chat…' :
+                    cryptoError            ? 'Encryption error — cannot send' :
+                    'Message — encrypted before send'
+                  }
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMsg()}
-                  disabled={!cryptoReady}
+                  disabled={!cryptoReady || !!cryptoError}
                 />
                 <button
                   className="btn btn-primary"
                   onClick={sendMsg}
-                  disabled={!input.trim() || !cryptoReady}
+                  disabled={!input.trim() || !cryptoReady || !!cryptoError}
                   style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px' }}
                 >
                   <Lock size={9} />
