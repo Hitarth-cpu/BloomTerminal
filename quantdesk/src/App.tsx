@@ -17,6 +17,9 @@ import TraderPerformancePage from './pages/admin/TraderPerformancePage';
 import ChatPermissionsPage   from './pages/admin/ChatPermissionsPage';
 import AdminAskbPage         from './pages/admin/AdminAskbPage';
 import AuditLogPage          from './pages/admin/AuditLogPage';
+import BroadcastsPage        from './pages/admin/BroadcastsPage';
+import OrgSettingsPage       from './pages/admin/OrgSettingsPage';
+import TeamsPage             from './pages/admin/TeamsPage';
 import { InvitePage }        from './pages/InvitePage';
 
 // ─── Standard app ─────────────────────────────────────────────────────────────
@@ -65,23 +68,23 @@ export default function App() {
           <Route index                       element={<AdminDashboard />} />
           <Route path="members"              element={<MembersPage />} />
           <Route path="invitations"          element={<MembersPage />} />
-          <Route path="teams"                element={<Navigate to="/admin/members" replace />} />
+          <Route path="teams"                element={<TeamsPage />} />
           <Route path="performance/traders"  element={<TraderPerformancePage />} />
           <Route path="performance/analysts" element={<TraderPerformancePage />} />
           <Route path="performance/sessions" element={<TraderPerformancePage />} />
-          <Route path="performance/teams"    element={<TraderPerformancePage />} />
+          <Route path="performance/teams"    element={<TeamsPage />} />
           <Route path="chat/permissions"     element={<ChatPermissionsPage />} />
           <Route path="chat/contacts"        element={<ChatPermissionsPage />} />
-          <Route path="broadcasts"           element={<Navigate to="/admin" replace />} />
-          <Route path="broadcasts/history"   element={<Navigate to="/admin" replace />} />
+          <Route path="broadcasts"           element={<BroadcastsPage />} />
+          <Route path="broadcasts/history"   element={<BroadcastsPage />} />
           <Route path="ai/askb"              element={<AdminAskbPage />} />
           <Route path="ai/summaries"         element={<AdminAskbPage />} />
           <Route path="ai/performance"       element={<AdminAskbPage />} />
           <Route path="security/audit"       element={<AuditLogPage />} />
           <Route path="security/sessions"    element={<AuditLogPage />} />
           <Route path="security/access"      element={<AuditLogPage />} />
-          <Route path="settings/org"         element={<Navigate to="/admin" replace />} />
-          <Route path="settings/integrations" element={<Navigate to="/admin" replace />} />
+          <Route path="settings/org"         element={<OrgSettingsPage />} />
+          <Route path="settings/integrations" element={<OrgSettingsPage />} />
           <Route path="*"                    element={<Navigate to="/admin" replace />} />
         </Route>
 

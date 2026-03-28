@@ -24,6 +24,7 @@ import adminPerfRouter       from './routes/admin/performance';
 import adminChatRouter       from './routes/admin/chat';
 import adminSecurityRouter   from './routes/admin/security';
 import adminAiRouter         from './routes/admin/ai';
+import adminBroadcastsRouter from './routes/admin/broadcasts';
 import newsRouter            from './routes/news';
 import rssProxyRouter        from './routes/rssProxy';
 import marketDataRouter      from './routes/marketData';
@@ -108,6 +109,7 @@ app.use('/api/admin/performance', adminPerfRouter);
 app.use('/api/admin/chat',        adminChatRouter);
 app.use('/api/admin/security',    adminSecurityRouter);
 app.use('/api/admin/ai',          adminAiRouter);
+app.use('/api/admin',             adminBroadcastsRouter);
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
