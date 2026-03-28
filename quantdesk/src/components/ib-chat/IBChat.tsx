@@ -10,6 +10,7 @@ import {
   fetchContactRequests, respondToContactRequest,
   type ApiContact, type ApiContactRequest, type ApiOrgUser,
 } from '../../services/api/contactsApi';
+import { sendWsEvent } from '../../hooks/useWebSocket';
 import {
   fetchBroadcastInbox, markBroadcastRead,
   type ApiBroadcastDelivery,
@@ -430,6 +431,8 @@ export function IBChat() {
     if (cached) return cached;
     const { roomId } = await api.get<{ roomId: string }>(`/chat/dm/${contactUserId}`);
     roomCache.current.set(contactUserId, roomId);
+    // Subscribe to the room channel so messages arrive in real-time
+    sendWsEvent({ type: 'SUBSCRIBE_ROOM', roomId });
     return roomId;
   }, []);
 

@@ -68,11 +68,12 @@ export async function searchOrgMembers(
      WHERE org_id = $1
        AND id <> $2
        AND is_active = true
-       AND is_org_visible = true
        AND (display_name ILIKE $3 OR email ILIKE $3)
-     ORDER BY display_name ASC
-     LIMIT $4`,
-    [orgId, excludeUserId, `%${q}%`, limit],
+     ORDER BY
+       CASE WHEN display_name ILIKE $4 THEN 0 ELSE 1 END,
+       display_name ASC
+     LIMIT $5`,
+    [orgId, excludeUserId, `%${q}%`, `${q}%`, limit],
   );
 }
 

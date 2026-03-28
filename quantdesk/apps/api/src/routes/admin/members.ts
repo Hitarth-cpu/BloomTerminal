@@ -50,14 +50,14 @@ router.get('/', async (req, res) => {
             ps.daily_pnl
      FROM users u
      LEFT JOIN performance_snapshots ps ON ps.user_id = u.id AND ps.snapshot_date = CURRENT_DATE
-     WHERE ${conditions.join(' AND ')} AND u.is_org_visible = true
+     WHERE ${conditions.join(' AND ')}
      ORDER BY ${orderBy}
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   );
 
   const [{ count }] = await query<{ count: string }>(
-    `SELECT COUNT(*) FROM users u WHERE ${conditions.join(' AND ')} AND u.is_org_visible = true`,
+    `SELECT COUNT(*) FROM users u WHERE ${conditions.join(' AND ')}`,
     params.slice(0, -2),
   );
 

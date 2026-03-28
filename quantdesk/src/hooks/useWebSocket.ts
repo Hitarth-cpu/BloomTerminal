@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '../stores/authStore';
 
 export type WsEventType =
+  | 'SUBSCRIBE_ROOM'
   | 'BROADCAST_RECEIVED'
   | 'CONTACT_REQUEST_RECEIVED'
   | 'CONTACT_REQUEST_ACCEPTED'
@@ -72,6 +73,13 @@ function disconnect() {
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   globalWs?.close();
   globalWs = null;
+}
+
+/** Send an event to the server via the shared WebSocket connection. */
+export function sendWsEvent(event: WsEvent): void {
+  if (globalWs?.readyState === WebSocket.OPEN) {
+    globalWs.send(JSON.stringify(event));
+  }
 }
 
 /**
