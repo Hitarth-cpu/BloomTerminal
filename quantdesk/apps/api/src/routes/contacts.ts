@@ -4,7 +4,7 @@ import {
   listGroups, createGroup,
   sendContactRequest, listIncomingRequests, respondToRequest,
 } from '../services/db/contactService';
-import { searchOrgMembers } from '../services/db/orgService';
+import { searchOrgMembers, searchAllUsers } from '../services/db/orgService';
 import { findById } from '../services/db/userService';
 
 const router = Router();
@@ -96,9 +96,10 @@ router.get('/discover', async (req, res) => {
   if (!q) { res.status(400).json({ error: 'q required' }); return; }
 
   const me = await findById(req.user.id);
-  if (!me?.org_id) { res.json({ users: [] }); return; }
-
-  const users = await searchOrgMembers(me.org_id, q, req.user.id, limit ? Number(limit) : 20);
+  const lim = limit ? Number(limit) : 20;
+  const users = me?.org_id
+    ? await searchOrgMembers(me.org_id, q, req.user.id, lim)
+    : await searchAllUsers(q, req.user.id, lim);
   res.json({ users });
 });
 
