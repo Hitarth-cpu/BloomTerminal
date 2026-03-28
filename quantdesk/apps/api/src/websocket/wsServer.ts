@@ -13,6 +13,7 @@ export type WsEventType =
   | 'USER_PRESENCE_UPDATE'
   | 'IB_MESSAGE'
   | 'NEWS_UPDATE'
+  | 'SUBSCRIBE_ROOM'
   | 'HEARTBEAT'
   | 'HEARTBEAT_ACK'
   | 'ERROR';
