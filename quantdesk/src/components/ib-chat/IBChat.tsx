@@ -4,7 +4,8 @@ import {
   UserPlus, Search, X, Star, Bell, ChevronDown, ChevronRight,
   Megaphone, CheckCircle, AlertTriangle, Info, BarChart2,
 } from 'lucide-react';
-import { getOrCreateChatKey, encryptMessage, decryptMessage } from '../../services/crypto';
+import { getOrCreateChatKey, encryptMessage, decryptMessage, getOrCreateUserKeyPair, exportPublicKey } from '../../services/crypto';
+import { publishPublicKey } from '../../services/api/chatApi';
 import {
   fetchContacts, addContact, discoverOrgUsers,
   fetchContactRequests, respondToContactRequest,
@@ -408,6 +409,14 @@ export function IBChat() {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  // ── Eagerly publish our ECDH public key so peers can find it ──────────────
+  useEffect(() => {
+    getOrCreateUserKeyPair()
+      .then(pair => exportPublicKey(pair.publicKey))
+      .then(pub  => publishPublicKey(pub))
+      .catch(() => { /* non-fatal — will retry when getOrCreateChatKey is called */ });
+  }, []);
 
   // ── Crypto key per chat ────────────────────────────────────────────────────
   useEffect(() => {

@@ -146,19 +146,44 @@ export async function importPSK(rawBase64: string): Promise<CryptoKey> {
 }
 
 /**
- * Returns (or lazily creates) the AES-256-GCM session key for a given chatId.
- * Key is persisted in IndexedDB so it survives page reloads within the same
- * browser session.
+ * Returns the AES-256-GCM shared key for a chat with a given peer.
  *
- * In production with a real backend, this would be replaced by the ECDH-derived
- * key for the chat pair / group key-wrapping scheme.
+ * Uses ECDH P-256: both users independently derive the same 256-bit secret
+ * from (my_private_key, their_public_key). The derived key is cached in
+ * IndexedDB so subsequent calls are instant.
+ *
+ * Our own ECDH public key is published to the server on every call (idempotent).
+ * The peer's public key is fetched from the server. Both steps require an
+ * active session — this function must be called after authentication.
+ *
+ * Throws if the peer hasn't published their public key yet (they need to open
+ * the chat panel at least once so their key is registered).
  */
-export async function getOrCreateChatKey(chatId: string): Promise<CryptoKey> {
-  const keyId = `psk:chat:${chatId}`;
-  const existing = await loadKey(keyId);
-  if (existing) return existing;
+export async function getOrCreateChatKey(peerId: string): Promise<CryptoKey> {
+  // 1. Return cached derived key if available
+  const cacheId = `ecdh:shared:${peerId}`;
+  const cached = await loadKey(cacheId);
+  if (cached) return cached;
 
-  const key = await generatePSK();
-  await storeKey(keyId, key);
-  return key;
+  // 2. Ensure our own ECDH keypair exists
+  const myPair = await getOrCreateUserKeyPair();
+  const myPubB64 = await exportPublicKey(myPair.publicKey);
+
+  // 3. Publish our public key to the server (idempotent — server upserts)
+  const { publishPublicKey, fetchPublicKey } = await import('../api/chatApi');
+  await publishPublicKey(myPubB64).catch(() => { /* non-fatal */ });
+
+  // 4. Fetch peer's public key
+  const peerPubB64 = await fetchPublicKey(peerId);
+  if (!peerPubB64) {
+    throw new Error('Key exchange pending — peer needs to open IB Chat once to register their key');
+  }
+
+  // 5. Derive shared AES-256-GCM key via ECDH (both sides produce the same key)
+  const peerPublicKey = await importPeerPublicKey(peerPubB64);
+  const sharedKey = await deriveSharedKey(myPair.privateKey, peerPublicKey);
+
+  // 6. Cache in IndexedDB for this session
+  await storeKey(cacheId, sharedKey);
+  return sharedKey;
 }
