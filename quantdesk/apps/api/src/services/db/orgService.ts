@@ -75,3 +75,21 @@ export async function searchOrgMembers(
     [orgId, excludeUserId, `%${q}%`, limit],
   );
 }
+
+/** Search all active users by name or email (fallback when user has no org). */
+export async function searchAllUsers(
+  q: string,
+  excludeUserId: string,
+  limit = 20,
+): Promise<{ id: string; email: string; display_name: string; photo_url: string | null; firm: string | null }[]> {
+  return query(
+    `SELECT id, email, display_name, photo_url, firm
+     FROM users
+     WHERE id <> $1
+       AND is_active = true
+       AND (display_name ILIKE $2 OR email ILIKE $2)
+     ORDER BY display_name ASC
+     LIMIT $3`,
+    [excludeUserId, `%${q}%`, limit],
+  );
+}
