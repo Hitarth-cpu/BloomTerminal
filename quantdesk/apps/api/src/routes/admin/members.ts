@@ -17,7 +17,10 @@ router.get('/', async (req, res) => {
   const { search, role, team, status, sort = 'display_name', page = '1', limit = '50' } = req.query as Record<string, string>;
   const orgId = req.adminUser.orgId;
 
-  const conditions: string[] = ['u.org_id = $1'];
+  // Show users assigned to this org OR unassigned (org_id IS NULL).
+  // Unassigned users appear during the migration period before ensureOrgAssigned
+  // has run on their first login since the fix was deployed.
+  const conditions: string[] = ['(u.org_id = $1 OR u.org_id IS NULL)'];
   const params: unknown[] = [orgId];
 
   if (search) {
