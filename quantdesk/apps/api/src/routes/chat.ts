@@ -81,11 +81,12 @@ router.get('/rooms/:roomId/messages', async (req, res) => {
 
 /** POST /api/chat/rooms/:roomId/messages */
 router.post('/rooms/:roomId/messages', async (req, res) => {
-  const body = req.body as Omit<NewMessage, 'chatRoomId' | 'senderId'>;
+  const body = req.body as Omit<NewMessage, 'chatRoomId' | 'senderId' | 'encryptionVersion'>;
   const payload: NewMessage = {
     ...body,
-    chatRoomId: req.params.roomId,
-    senderId:   req.user.id,
+    chatRoomId:        req.params.roomId,
+    senderId:          req.user.id,
+    encryptionVersion: 'AES256GCM_V1',
   };
 
   const id = await saveMessage(payload);
