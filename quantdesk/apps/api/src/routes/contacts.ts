@@ -4,7 +4,7 @@ import {
   listGroups, createGroup,
   sendContactRequest, listIncomingRequests, respondToRequest,
 } from '../services/db/contactService';
-import { searchOrgMembers, searchAllUsers } from '../services/db/orgService';
+import { searchAllUsers } from '../services/db/orgService';
 import { findById } from '../services/db/userService';
 
 const router = Router();
@@ -95,11 +95,11 @@ router.get('/discover', async (req, res) => {
   const { q, limit } = req.query as { q?: string; limit?: string };
   if (!q) { res.status(400).json({ error: 'q required' }); return; }
 
-  const me = await findById(req.user.id);
   const lim = limit ? Number(limit) : 20;
-  const users = me?.org_id
-    ? await searchOrgMembers(me.org_id, q, req.user.id, lim)
-    : await searchAllUsers(q, req.user.id, lim);
+  // Search all active users globally — ensures users not yet org-assigned are still discoverable.
+  // Priority: org members (starts-with match) first, then others.
+  const me = await findById(req.user.id);
+  const users = await searchAllUsers(q, req.user.id, lim, me?.org_id ?? null);
   res.json({ users });
 });
 

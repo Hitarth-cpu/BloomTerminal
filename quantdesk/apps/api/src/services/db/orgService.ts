@@ -77,20 +77,38 @@ export async function searchOrgMembers(
   );
 }
 
-/** Search all active users by name or email (fallback when user has no org). */
+/** Search all active users by name or email. When orgId is provided, org members are ranked first. */
 export async function searchAllUsers(
   q: string,
   excludeUserId: string,
   limit = 20,
+  orgId: string | null = null,
 ): Promise<{ id: string; email: string; display_name: string; photo_url: string | null; firm: string | null }[]> {
+  if (orgId) {
+    return query(
+      `SELECT id, email, display_name, photo_url, firm
+       FROM users
+       WHERE id <> $1
+         AND is_active = true
+         AND (display_name ILIKE $2 OR email ILIKE $2)
+       ORDER BY
+         CASE WHEN org_id = $4 THEN 0 ELSE 1 END,
+         CASE WHEN display_name ILIKE $3 THEN 0 ELSE 1 END,
+         display_name ASC
+       LIMIT $5`,
+      [excludeUserId, `%${q}%`, `${q}%`, orgId, limit],
+    );
+  }
   return query(
     `SELECT id, email, display_name, photo_url, firm
      FROM users
      WHERE id <> $1
        AND is_active = true
        AND (display_name ILIKE $2 OR email ILIKE $2)
-     ORDER BY display_name ASC
-     LIMIT $3`,
-    [excludeUserId, `%${q}%`, limit],
+     ORDER BY
+       CASE WHEN display_name ILIKE $3 THEN 0 ELSE 1 END,
+       display_name ASC
+     LIMIT $4`,
+    [excludeUserId, `%${q}%`, `${q}%`, limit],
   );
 }
