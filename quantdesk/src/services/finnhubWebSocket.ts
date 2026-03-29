@@ -17,9 +17,6 @@ type TickCallback = (tick: PriceTick) => void;
 class FinnhubWebSocketManager {
   private ws: WebSocket | null = null;
   private subscribers = new Map<string, Set<TickCallback>>();
-  private reconnectDelay = 1000;
-  // reconnect timer handle (assigned to suppress unused-var; may be used for clearTimeout later)
-  private isConnecting = false;
 
   subscribe(symbol: string, cb: TickCallback) {
     if (!this.subscribers.has(symbol)) {
