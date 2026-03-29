@@ -136,43 +136,106 @@ router.get('/fear-greed', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /api/market-data/finnhub/quote?symbol=AAPL — rate-limited Finnhub proxy
+// ─── Finnhub proxy helpers ─────────────────────────────────────────────────────
+// Shared rate-limit bucket: Finnhub free tier = 60 req/min.
+// We cap at 55 to leave headroom for bursts.
 const finnhubRequestTimes: number[] = [];
-router.get('/finnhub/quote', async (req: Request, res: Response) => {
-  const symbol = req.query.symbol as string;
-  if (!symbol) {
-    res.status(400).json({ error: 'Missing symbol' });
-    return;
-  }
 
-  // Rate limiting: max 28 requests per minute for Finnhub free tier
+function finnhubRateCheck(): boolean {
   const now = Date.now();
-  const windowStart = now - 60000;
+  const windowStart = now - 60_000;
   while (finnhubRequestTimes.length > 0 && finnhubRequestTimes[0] < windowStart) {
     finnhubRequestTimes.shift();
   }
-  if (finnhubRequestTimes.length >= 28) {
-    res.status(429).json({ error: 'Finnhub rate limit — try again in a moment' });
-    return;
-  }
+  if (finnhubRequestTimes.length >= 55) return false;
   finnhubRequestTimes.push(now);
+  return true;
+}
 
-  const cacheKey = `finnhub:${symbol}`;
-  const cached = getCached(cacheKey, 60_000); // 60s cache — reduces Finnhub rate limit hits
-  if (cached) {
-    res.json(cached);
-    return;
-  }
+async function finnhubFetch(path: string, signal?: AbortSignal): Promise<globalThis.Response> {
+  return fetch(
+    `https://finnhub.io/api/v1/${path}${path.includes('?') ? '&' : '?'}token=${FINNHUB_KEY}`,
+    { signal: signal ?? AbortSignal.timeout(8000) },
+  );
+}
+
+// GET /api/market-data/finnhub/quote?symbol=AAPL
+router.get('/finnhub/quote', async (req: Request, res: Response) => {
+  const symbol = req.query.symbol as string;
+  if (!symbol) { res.status(400).json({ error: 'Missing symbol' }); return; }
+  if (!finnhubRateCheck()) { res.status(429).json({ error: 'Rate limit — try again shortly' }); return; }
+
+  const cacheKey = `finnhub:quote:${symbol}`;
+  const cached = getCached(cacheKey, 60_000);
+  if (cached) { res.json(cached); return; }
 
   try {
-    const fhRes = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`,
-      { signal: AbortSignal.timeout(5000) },
+    const fhRes = await finnhubFetch(`quote?symbol=${encodeURIComponent(symbol)}`);
+    if (!fhRes.ok) { res.status(fhRes.status).json({ error: 'Finnhub error' }); return; }
+    const data = await fhRes.json();
+    setCache(cacheKey, data);
+    res.json(data);
+  } catch {
+    res.status(502).json({ error: 'Finnhub timeout' });
+  }
+});
+
+// GET /api/market-data/finnhub/news?category=general
+router.get('/finnhub/news', async (req: Request, res: Response) => {
+  const category = (req.query.category as string) || 'general';
+  const cacheKey = `finnhub:news:${category}`;
+  const cached = getCached(cacheKey, 300_000); // 5 min cache for news
+  if (cached) { res.json(cached); return; }
+  if (!finnhubRateCheck()) { res.status(429).json({ error: 'Rate limit — try again shortly' }); return; }
+
+  try {
+    const fhRes = await finnhubFetch(`news?category=${encodeURIComponent(category)}`);
+    if (!fhRes.ok) { res.status(fhRes.status).json({ error: 'Finnhub error' }); return; }
+    const data = await fhRes.json();
+    setCache(cacheKey, data);
+    res.json(data);
+  } catch {
+    res.status(502).json({ error: 'Finnhub timeout' });
+  }
+});
+
+// GET /api/market-data/finnhub/company-news?symbol=AAPL&from=2024-01-01&to=2024-01-07
+router.get('/finnhub/company-news', async (req: Request, res: Response) => {
+  const { symbol, from, to } = req.query as Record<string, string>;
+  if (!symbol || !from || !to) {
+    res.status(400).json({ error: 'Missing symbol, from, or to' });
+    return;
+  }
+  const cacheKey = `finnhub:company-news:${symbol}:${from}:${to}`;
+  const cached = getCached(cacheKey, 300_000);
+  if (cached) { res.json(cached); return; }
+  if (!finnhubRateCheck()) { res.status(429).json({ error: 'Rate limit — try again shortly' }); return; }
+
+  try {
+    const fhRes = await finnhubFetch(
+      `company-news?symbol=${encodeURIComponent(symbol)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     );
-    if (!fhRes.ok) {
-      res.status(fhRes.status).json({ error: 'Finnhub error' });
-      return;
-    }
+    if (!fhRes.ok) { res.status(fhRes.status).json({ error: 'Finnhub error' }); return; }
+    const data = await fhRes.json();
+    setCache(cacheKey, data);
+    res.json(data);
+  } catch {
+    res.status(502).json({ error: 'Finnhub timeout' });
+  }
+});
+
+// GET /api/market-data/finnhub/search?q=apple
+router.get('/finnhub/search', async (req: Request, res: Response) => {
+  const q = req.query.q as string;
+  if (!q) { res.status(400).json({ error: 'Missing q' }); return; }
+  const cacheKey = `finnhub:search:${q.toLowerCase()}`;
+  const cached = getCached(cacheKey, 600_000); // 10 min — symbol list changes rarely
+  if (cached) { res.json(cached); return; }
+  if (!finnhubRateCheck()) { res.status(429).json({ error: 'Rate limit — try again shortly' }); return; }
+
+  try {
+    const fhRes = await finnhubFetch(`search?q=${encodeURIComponent(q)}`);
+    if (!fhRes.ok) { res.status(fhRes.status).json({ error: 'Finnhub error' }); return; }
     const data = await fhRes.json();
     setCache(cacheKey, data);
     res.json(data);

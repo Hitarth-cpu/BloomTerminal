@@ -1,8 +1,9 @@
-// Singleton WebSocket manager for Finnhub live price stream
-// Lives outside React — one connection shared across all components
-
-const API_KEY = import.meta.env.VITE_FINNHUB_API_KEY as string | undefined;
-const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
+// Singleton WebSocket manager for Finnhub live price stream.
+// The Finnhub API key is NEVER held client-side for security reasons.
+// Live WebSocket ticks are therefore disabled; components fall back to
+// REST polling (every 30 s via React Query) which goes through the
+// server-side proxy at /api/market-data/finnhub/quote.
+const MOCK_MODE = true; // WS disabled — no client-side API key
 
 export interface PriceTick {
   symbol: string;
@@ -16,9 +17,6 @@ type TickCallback = (tick: PriceTick) => void;
 class FinnhubWebSocketManager {
   private ws: WebSocket | null = null;
   private subscribers = new Map<string, Set<TickCallback>>();
-  private reconnectDelay = 1000;
-  // reconnect timer handle (assigned to suppress unused-var; may be used for clearTimeout later)
-  private isConnecting = false;
 
   subscribe(symbol: string, cb: TickCallback) {
     if (!this.subscribers.has(symbol)) {
@@ -45,56 +43,8 @@ class FinnhubWebSocketManager {
   }
 
   private connect() {
-    if (MOCK_MODE || !API_KEY || this.isConnecting) return;
-    if (this.ws && this.ws.readyState !== WebSocket.CLOSED) return;
-
-    this.isConnecting = true;
-    this.ws = new WebSocket(`wss://ws.finnhub.io?token=${API_KEY}`);
-
-    this.ws.onopen = () => {
-      this.isConnecting = false;
-      this.reconnectDelay = 1000; // reset on success
-      // Re-subscribe all existing symbols
-      for (const symbol of this.subscribers.keys()) {
-        this.sendSubscribe(symbol);
-      }
-    };
-
-    this.ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data as string);
-        if (msg.type === 'trade' && Array.isArray(msg.data)) {
-          for (const tick of msg.data) {
-            const cbs = this.subscribers.get(tick.s);
-            if (cbs) {
-              const priceTick: PriceTick = {
-                symbol: tick.s,
-                price: tick.p,
-                volume: tick.v,
-                timestamp: tick.t,
-              };
-              cbs.forEach(cb => cb(priceTick));
-            }
-          }
-        }
-      } catch {
-        // malformed message, ignore
-      }
-    };
-
-    this.ws.onerror = () => {
-      this.isConnecting = false;
-    };
-
-    this.ws.onclose = () => {
-      this.isConnecting = false;
-      if (this.subscribers.size === 0) return;
-      // Exponential backoff reconnect
-      void setTimeout(() => {
-        this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
-        this.connect();
-      }, this.reconnectDelay);
-    };
+    // No-op: direct Finnhub WebSocket is disabled — no client-side API key.
+    // Prices are refreshed via REST polling through the server proxy instead.
   }
 
   private sendSubscribe(symbol: string) {
@@ -110,7 +60,7 @@ class FinnhubWebSocketManager {
   }
 
   get connectionStatus(): 'connected' | 'connecting' | 'disconnected' | 'mock' {
-    if (MOCK_MODE || !API_KEY) return 'mock';
+    if (MOCK_MODE) return 'mock';
     if (!this.ws) return 'disconnected';
     if (this.ws.readyState === WebSocket.OPEN) return 'connected';
     if (this.ws.readyState === WebSocket.CONNECTING) return 'connecting';
