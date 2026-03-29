@@ -46,59 +46,8 @@ class FinnhubWebSocketManager {
   }
 
   private connect() {
-    if (MOCK_MODE || this.isConnecting) return;
-    if (this.ws && this.ws.readyState !== WebSocket.CLOSED) return;
-
-    this.isConnecting = true;
-    // NOTE: wss://ws.finnhub.io connection intentionally omitted — no client key.
-    this.ws = null;
-    this.isConnecting = false;
-    return;
-
-    this.ws.onopen = () => {
-      this.isConnecting = false;
-      this.reconnectDelay = 1000; // reset on success
-      // Re-subscribe all existing symbols
-      for (const symbol of this.subscribers.keys()) {
-        this.sendSubscribe(symbol);
-      }
-    };
-
-    this.ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data as string);
-        if (msg.type === 'trade' && Array.isArray(msg.data)) {
-          for (const tick of msg.data) {
-            const cbs = this.subscribers.get(tick.s);
-            if (cbs) {
-              const priceTick: PriceTick = {
-                symbol: tick.s,
-                price: tick.p,
-                volume: tick.v,
-                timestamp: tick.t,
-              };
-              cbs.forEach(cb => cb(priceTick));
-            }
-          }
-        }
-      } catch {
-        // malformed message, ignore
-      }
-    };
-
-    this.ws.onerror = () => {
-      this.isConnecting = false;
-    };
-
-    this.ws.onclose = () => {
-      this.isConnecting = false;
-      if (this.subscribers.size === 0) return;
-      // Exponential backoff reconnect
-      void setTimeout(() => {
-        this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
-        this.connect();
-      }, this.reconnectDelay);
-    };
+    // No-op: direct Finnhub WebSocket is disabled — no client-side API key.
+    // Prices are refreshed via REST polling through the server proxy instead.
   }
 
   private sendSubscribe(symbol: string) {
