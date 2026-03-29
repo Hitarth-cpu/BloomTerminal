@@ -150,7 +150,9 @@ export async function importPSK(rawBase64: string): Promise<CryptoKey> {
  *
  * Uses ECDH P-256: both users independently derive the same 256-bit secret
  * from (my_private_key, their_public_key). The derived key is cached in
- * IndexedDB so subsequent calls are instant.
+ * IndexedDB and validated against the peer's current server public key on
+ * every call — if the peer rotated their key pair the cache is invalidated
+ * and the key is re-derived automatically.
  *
  * Our own ECDH public key is published to the server on every call (idempotent).
  * The peer's public key is fetched from the server. Both steps require an
@@ -160,30 +162,41 @@ export async function importPSK(rawBase64: string): Promise<CryptoKey> {
  * the chat panel at least once so their key is registered).
  */
 export async function getOrCreateChatKey(peerId: string): Promise<CryptoKey> {
-  // 1. Return cached derived key if available
-  const cacheId = `ecdh:shared:${peerId}`;
-  const cached = await loadKey(cacheId);
-  if (cached) return cached;
+  const cacheId      = `ecdh:shared:${peerId}`;
+  const peerPubLSKey = `ecdh_peer_pub:${peerId}`; // localStorage: peer pub key we last used
 
-  // 2. Ensure our own ECDH keypair exists
-  const myPair = await getOrCreateUserKeyPair();
+  // 1. Ensure our own ECDH keypair exists and publish it
+  const myPair   = await getOrCreateUserKeyPair();
   const myPubB64 = await exportPublicKey(myPair.publicKey);
 
-  // 3. Publish our public key to the server (idempotent — server upserts)
   const { publishPublicKey, fetchPublicKey } = await import('../api/chatApi');
   await publishPublicKey(myPubB64).catch(() => { /* non-fatal */ });
 
-  // 4. Fetch peer's public key
+  // 2. Fetch peer's CURRENT public key from server
   const peerPubB64 = await fetchPublicKey(peerId);
   if (!peerPubB64) {
     throw new Error('Key exchange pending — peer needs to open IB Chat once to register their key');
   }
 
-  // 5. Derive shared AES-256-GCM key via ECDH (both sides produce the same key)
-  const peerPublicKey = await importPeerPublicKey(peerPubB64);
-  const sharedKey = await deriveSharedKey(myPair.privateKey, peerPublicKey);
+  // 3. Return cached derived key IF the peer's public key has not changed since
+  //    we last derived it. If it changed (peer rotated keys), invalidate and re-derive.
+  const storedPeerPub = typeof localStorage !== 'undefined'
+    ? localStorage.getItem(peerPubLSKey)
+    : null;
+  const cached = await loadKey(cacheId);
+  if (cached && storedPeerPub === peerPubB64) {
+    return cached;
+  }
 
-  // 6. Cache in IndexedDB for this session
+  // 4. Derive shared AES-256-GCM key via ECDH (both sides produce the same key)
+  const peerPublicKey = await importPeerPublicKey(peerPubB64);
+  const sharedKey     = await deriveSharedKey(myPair.privateKey, peerPublicKey);
+
+  // 5. Cache in IndexedDB and record which peer pub key we derived from
   await storeKey(cacheId, sharedKey);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(peerPubLSKey, peerPubB64);
+  }
+
   return sharedKey;
 }

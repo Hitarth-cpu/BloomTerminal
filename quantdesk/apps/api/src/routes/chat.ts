@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   saveMessage, getMessages, markDelivered, markRead,
-  softDeleteMessage, savePublicKey, getPublicKey,
+  softDeleteMessage, clearRoomMessages, savePublicKey, getPublicKey,
   type NewMessage,
 } from '../services/db/chatService';
 import { publishMessage, redisPublisher } from '../services/cache/pubsub';
@@ -122,6 +122,21 @@ router.delete('/messages/:id', async (req, res) => {
   const deleted = await softDeleteMessage(req.params.id, req.user.id);
   if (!deleted) { res.status(404).json({ error: 'Message not found or not authorised' }); return; }
   res.json({ ok: true });
+});
+
+/** DELETE /api/chat/rooms/:roomId/messages — clear all messages (any room member) */
+router.delete('/rooms/:roomId/messages', async (req, res) => {
+  // Verify user is a member of this room
+  const membership = await query<{ room_id: string }>(
+    `SELECT room_id FROM chat_members WHERE room_id = $1 AND user_id = $2 LIMIT 1`,
+    [req.params.roomId, req.user.id],
+  );
+  if (!membership.length) {
+    res.status(403).json({ error: 'Not a member of this room' });
+    return;
+  }
+  const count = await clearRoomMessages(req.params.roomId);
+  res.json({ ok: true, deletedCount: count });
 });
 
 /** PUT /api/chat/keys — publish ECDH public key */

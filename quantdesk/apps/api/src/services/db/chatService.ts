@@ -85,6 +85,11 @@ export async function softDeleteMessage(messageId: string, requestingUserId: str
   return result.modifiedCount === 1;
 }
 
+export async function clearRoomMessages(chatRoomId: string): Promise<number> {
+  const result = await messagesCollection().deleteMany({ chatRoomId });
+  return result.deletedCount;
+}
+
 // ─── ECDH public keys ─────────────────────────────────────────────────────────
 
 export async function savePublicKey(userId: string, publicKey: string): Promise<void> {

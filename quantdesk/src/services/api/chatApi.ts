@@ -53,3 +53,7 @@ export async function fetchPublicKey(userId: string): Promise<string | null> {
     return null;
   }
 }
+
+export async function clearRoomMessages(roomId: string): Promise<void> {
+  await api.delete(`/chat/rooms/${roomId}/messages`);
+}
