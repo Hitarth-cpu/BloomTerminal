@@ -1,8 +1,9 @@
-// Singleton WebSocket manager for Finnhub live price stream
-// Lives outside React — one connection shared across all components
-
-const API_KEY = import.meta.env.VITE_FINNHUB_API_KEY as string | undefined;
-const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
+// Singleton WebSocket manager for Finnhub live price stream.
+// The Finnhub API key is NEVER held client-side for security reasons.
+// Live WebSocket ticks are therefore disabled; components fall back to
+// REST polling (every 30 s via React Query) which goes through the
+// server-side proxy at /api/market-data/finnhub/quote.
+const MOCK_MODE = true; // WS disabled — no client-side API key
 
 export interface PriceTick {
   symbol: string;
@@ -45,11 +46,14 @@ class FinnhubWebSocketManager {
   }
 
   private connect() {
-    if (MOCK_MODE || !API_KEY || this.isConnecting) return;
+    if (MOCK_MODE || this.isConnecting) return;
     if (this.ws && this.ws.readyState !== WebSocket.CLOSED) return;
 
     this.isConnecting = true;
-    this.ws = new WebSocket(`wss://ws.finnhub.io?token=${API_KEY}`);
+    // NOTE: wss://ws.finnhub.io connection intentionally omitted — no client key.
+    this.ws = null;
+    this.isConnecting = false;
+    return;
 
     this.ws.onopen = () => {
       this.isConnecting = false;
@@ -110,7 +114,7 @@ class FinnhubWebSocketManager {
   }
 
   get connectionStatus(): 'connected' | 'connecting' | 'disconnected' | 'mock' {
-    if (MOCK_MODE || !API_KEY) return 'mock';
+    if (MOCK_MODE) return 'mock';
     if (!this.ws) return 'disconnected';
     if (this.ws.readyState === WebSocket.OPEN) return 'connected';
     if (this.ws.readyState === WebSocket.CONNECTING) return 'connecting';

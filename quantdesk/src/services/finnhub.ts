@@ -1,12 +1,13 @@
 import type { PriceData, NewsItem } from '../types';
 import { generatePriceData, MOCK_NEWS } from './mockData';
 
-const API_KEY = import.meta.env.VITE_FINNHUB_API_KEY as string | undefined;
+// No API key on the client — all Finnhub calls go through the server proxy at
+// /api/market-data/finnhub/* which injects FINNHUB_API_KEY server-side.
 const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
 const BASE = '/api/market-data/finnhub';
 
 function isMock() {
-  return MOCK_MODE || !API_KEY;
+  return MOCK_MODE;
 }
 
 // ─── Quote ─────────────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ interface FinnhubQuote {
 export async function fetchQuote(ticker: string): Promise<PriceData> {
   if (isMock()) return generatePriceData(ticker);
 
-  const res = await fetch(`${BASE}/quote?symbol=${ticker}&token=${API_KEY}`);
+  const res = await fetch(`${BASE}/quote?symbol=${ticker}`);
   if (!res.ok) return generatePriceData(ticker);
 
   const q: FinnhubQuote = await res.json();
@@ -112,7 +113,7 @@ export async function fetchMarketNews(): Promise<NewsItem[]> {
   if (isMock()) return MOCK_NEWS;
 
   try {
-    const res = await fetch(`${BASE}/news?category=general&minId=0&token=${API_KEY}`);
+    const res = await fetch(`${BASE}/news?category=general&minId=0`);
     if (!res.ok) return MOCK_NEWS;
     const data: FinnhubNewsItem[] = await res.json();
     return data.slice(0, 30).map(mapNewsItem);
@@ -129,7 +130,7 @@ export async function fetchCompanyNews(ticker: string): Promise<NewsItem[]> {
   const to = today.toISOString().slice(0, 10);
 
   try {
-    const res = await fetch(`${BASE}/company-news?symbol=${ticker}&from=${from}&to=${to}&token=${API_KEY}`);
+    const res = await fetch(`${BASE}/company-news?symbol=${ticker}&from=${from}&to=${to}`);
     if (!res.ok) return [];
     const data: FinnhubNewsItem[] = await res.json();
     return data.slice(0, 20).map(mapNewsItem);
@@ -148,7 +149,7 @@ export interface SymbolResult {
 export async function searchSymbol(query: string): Promise<SymbolResult[]> {
   if (isMock() || !query) return [];
   try {
-    const res = await fetch(`${BASE}/search?q=${encodeURIComponent(query)}&token=${API_KEY}`);
+    const res = await fetch(`${BASE}/search?q=${encodeURIComponent(query)}`);
     if (!res.ok) return [];
     const data = await res.json();
     return (data.result ?? []).slice(0, 10);
