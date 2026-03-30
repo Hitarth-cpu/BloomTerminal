@@ -5,7 +5,7 @@ export interface ApiMessage {
   chatRoomId: string;
   senderId:   string;
   messageType: 'text' | 'structured_inquiry' | 'file_ref' | 'system';
-  encrypted:  { iv: string; ciphertext: string; tag: string };
+  encrypted:  { v?: number; iv: string; ct?: string; ciphertext?: string; tag?: string; aad?: unknown };
   aad:        { chatRoomId: string; senderId: string; messageType: string };
   deliveredTo: string[];
   readBy:      string[];

@@ -506,7 +506,7 @@ export function IBChat() {
           content:    '', // encrypted; will decrypt below
           timestamp:  new Date(m.createdAt).getTime(),
           type:       m.messageType === 'text' ? 'text' : 'text',
-          encrypted:  m.encrypted as unknown as EncryptedPayload | undefined,
+          encrypted:  m.encrypted as EncryptedPayload | undefined,
         }));
         setMessages(prev => ({ ...prev, [activeContactId]: mapped }));
       } catch {
@@ -532,7 +532,7 @@ export function IBChat() {
 
     let encrypted: EncryptedPayload;
     try {
-      encrypted = await encryptMessage(plaintext, activeChatKey, { chatId: activeContactId, senderId: 'me' });
+      encrypted = await encryptMessage(plaintext, activeChatKey, { chatId: activeContactId, senderId: user?.uid ?? '' });
     } catch {
       setInput(plaintext); // restore input on failure
       return;
@@ -560,7 +560,7 @@ export function IBChat() {
       const roomId = await getRoomId(activeContactId);
       await apiSendMessage(roomId, {
         messageType: 'text',
-        encrypted: encrypted as unknown as { iv: string; ciphertext: string; tag: string },
+        encrypted: encrypted,
         aad: { chatRoomId: roomId, senderId: user?.uid ?? 'me', messageType: 'text' },
       });
     } catch (err) {
@@ -593,6 +593,11 @@ export function IBChat() {
       const uid = event.userId as string;
       const status = event.status as string;
       if (uid) setPresenceMap(prev => ({ ...prev, [uid]: status }));
+    }
+    if (event.type === 'SUBSCRIBE_ROOM') {
+      // Server forwarded a new-room notification — re-send subscription so key derivation triggers
+      const roomId = event.roomId as string;
+      if (roomId) sendWsEvent({ type: 'SUBSCRIBE_ROOM', roomId });
     }
     if (event.type === 'IB_MESSAGE') {
       const senderId = event.senderId as string;

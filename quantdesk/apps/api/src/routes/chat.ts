@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import {
   saveMessage, getMessages, markDelivered, markRead,
   softDeleteMessage, clearRoomMessages, savePublicKey, getPublicKey,
@@ -6,6 +7,22 @@ import {
 } from '../services/db/chatService';
 import { publishMessage, redisPublisher } from '../services/cache/pubsub';
 import { query } from '../db/postgres';
+
+const msgRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: 'CHAT_RATE_LIMITED', message: 'Too many messages. Slow down.' } },
+});
+
+const keyRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: { code: 'KEY_RATE_LIMITED', message: 'Too many key rotations.' } },
+});
 
 const router = Router();
 
@@ -80,7 +97,7 @@ router.get('/rooms/:roomId/messages', async (req, res) => {
 });
 
 /** POST /api/chat/rooms/:roomId/messages */
-router.post('/rooms/:roomId/messages', async (req, res) => {
+router.post('/rooms/:roomId/messages', msgRateLimit, async (req, res) => {
   const body = req.body as Omit<NewMessage, 'chatRoomId' | 'senderId' | 'encryptionVersion'>;
   const payload: NewMessage = {
     ...body,
@@ -140,7 +157,7 @@ router.delete('/rooms/:roomId/messages', async (req, res) => {
 });
 
 /** PUT /api/chat/keys — publish ECDH public key */
-router.put('/keys', async (req, res) => {
+router.put('/keys', keyRateLimit, async (req, res) => {
   const { publicKey } = req.body as { publicKey?: string };
   if (!publicKey) { res.status(400).json({ error: 'publicKey required' }); return; }
   await savePublicKey(req.user.id, publicKey);
