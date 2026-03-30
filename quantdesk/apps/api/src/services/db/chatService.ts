@@ -93,14 +93,21 @@ export async function clearRoomMessages(chatRoomId: string): Promise<number> {
 // ─── ECDH public keys ─────────────────────────────────────────────────────────
 
 export async function savePublicKey(userId: string, publicKey: string): Promise<void> {
+  // Upsert: set fields on insert (keyVersion starts at 0) and always update publicKey/updatedAt.
+  // $inc and $setOnInsert cannot both touch keyVersion in the same operation (MongoDB error 40),
+  // so we split into two operations: upsert first, then increment keyVersion unconditionally.
   await keyBundlesCollection().updateOne(
     { userId },
     {
+      $setOnInsert: { userId, createdAt: new Date(), keyVersion: 0 },
       $set:         { publicKey, updatedAt: new Date() },
-      $setOnInsert: { userId, createdAt: new Date() },
-      $inc:         { keyVersion: 1 },
     },
     { upsert: true },
+  );
+  // Increment keyVersion on every publish (works for both new and existing documents).
+  await keyBundlesCollection().updateOne(
+    { userId },
+    { $inc: { keyVersion: 1 } },
   );
 }
 

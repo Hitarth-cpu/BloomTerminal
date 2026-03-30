@@ -244,13 +244,19 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!form.email || !form.role) { setError('Email and role required'); return; }
     setLoading(true);
     try {
-      await createInvitation(form);
-      onCreated(); onClose();
+      const result = await createInvitation(form);
+      onCreated();
+      if (result && result.emailSent === false && result.inviteLink) {
+        setInviteLink(result.inviteLink);
+      } else {
+        onClose();
+      }
     } catch (e: unknown) {
       setError((e as Error).message);
     } finally { setLoading(false); }
@@ -296,6 +302,27 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
           }}>
             {loading ? 'SENDING…' : 'SEND INVITATION →'}
           </button>
+          {inviteLink && (
+            <div style={{ marginTop: 16, padding: 12, border: '1px solid rgba(255,102,0,0.4)', borderRadius: 4, background: 'rgba(255,102,0,0.06)' }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)', marginBottom: 8 }}>
+                EMAIL NOT SENT — share this link with the invitee:
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  readOnly
+                  value={inviteLink}
+                  onClick={e => (e.target as HTMLInputElement).select()}
+                  style={{ flex: 1, background: 'var(--bg-elevated)', border: '1px solid var(--bg-border)', color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontSize: 10, padding: '4px 8px', outline: 'none' }}
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(inviteLink)}
+                  style={{ padding: '4px 12px', fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 700, background: 'var(--accent-primary)', color: '#000', border: 'none', cursor: 'pointer' }}
+                >
+                  COPY
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

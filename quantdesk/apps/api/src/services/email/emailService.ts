@@ -1,6 +1,5 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.EMAIL_FROM ?? 'BloomTerminal <onboarding@resend.dev>';
 const APP_URL = process.env.FRONTEND_URL ?? 'https://bloom-terminal.vercel.app';
 
@@ -12,16 +11,23 @@ export async function sendInvitationEmail(opts: {
   token: string;
   role: string;
   expiryHours: number;
-}): Promise<void> {
+}): Promise<{ sent: boolean }> {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('[email] RESEND_API_KEY not set — skipping email send');
+    return { sent: false };
+  }
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
   const { to, firstName, inviterName, orgName, token, role, expiryHours } = opts;
   const link = `${APP_URL}/invite?token=${token}`;
   const name = firstName ?? to.split('@')[0];
 
-  await resend.emails.send({
-    from: FROM,
-    to,
-    subject: `You've been invited to join ${orgName} on BloomTerminal`,
-    html: `
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to,
+      subject: `You've been invited to join ${orgName} on BloomTerminal`,
+      html: `
 <!DOCTYPE html>
 <html>
 <body style="font-family:monospace;background:#0a0a0a;color:#e0e0e0;padding:40px;max-width:520px;margin:0 auto">
@@ -51,5 +57,10 @@ export async function sendInvitationEmail(opts: {
   </div>
 </body>
 </html>`,
-  });
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error('[email] Send failed:', (err as Error).message);
+    return { sent: false };
+  }
 }
