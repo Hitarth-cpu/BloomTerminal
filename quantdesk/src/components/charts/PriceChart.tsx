@@ -76,7 +76,7 @@ export function PriceChart({ ticker, showVolume = true, compact = false }: Price
       {/* Chart */}
       {!isLoading && bars.length > 0 && (
         <div style={{ flex: 1, minHeight: 0 }}>
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minHeight={100}>
             <ComposedChart data={bars} margin={{ top: 4, right: 8, bottom: 0, left: 4 }}>
               <XAxis
                 dataKey="timestamp"

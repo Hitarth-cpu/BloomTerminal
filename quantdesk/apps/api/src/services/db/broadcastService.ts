@@ -362,13 +362,13 @@ export async function getBroadcastStats(broadcastId: string, orgId: string): Pro
     [broadcastId],
   );
 
-  const total = bc.total_recipients || 1;
+  const total = bc.total_recipients;
   return {
-    totalRecipients:  bc.total_recipients,
+    totalRecipients:  total,
     deliveredCount:   bc.delivered_count,
     readCount:        bc.read_count,
-    deliveryRate:     Math.round((bc.delivered_count / total) * 100) / 100,
-    readRate:         Math.round((bc.read_count / total) * 100) / 100,
+    deliveryRate:     total > 0 ? Math.round((bc.delivered_count / total) * 100) / 100 : 0,
+    readRate:         total > 0 ? Math.round((bc.read_count / total) * 100) / 100 : 0,
     deliveriesByStatus: {
       pending:   Number(byStatus?.pending   ?? 0),
       delivered: Number(byStatus?.delivered ?? 0),
@@ -434,6 +434,7 @@ export async function createFromTemplate(
   if (!tpl) throw new Error('Template not found');
 
   const broadcast = await createBroadcast({
+    ...overrides,
     orgId,
     createdBy,
     title:          overrides.title        ?? tpl.name,
@@ -442,7 +443,6 @@ export async function createFromTemplate(
     priority:       overrides.priority ?? tpl.default_priority,
     audienceType:   overrides.audienceType ?? tpl.default_audience_type,
     audienceConfig: overrides.audienceConfig ?? {},
-    ...overrides,
   });
 
   await query(

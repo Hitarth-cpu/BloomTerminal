@@ -1,9 +1,20 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
 
+// Per-router rate limit for public market-data endpoints
+router.use(rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests — try again shortly' },
+}));
+
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY ?? '';
+const FINNHUB_KEY_MISSING = !FINNHUB_KEY;
 
 // In-memory cache for market data
 const dataCache = new Map<string, { data: unknown; ts: number }>();
@@ -163,6 +174,7 @@ async function finnhubFetch(path: string, signal?: AbortSignal): Promise<globalT
 router.get('/finnhub/quote', async (req: Request, res: Response) => {
   const symbol = req.query.symbol as string;
   if (!symbol) { res.status(400).json({ error: 'Missing symbol' }); return; }
+  if (FINNHUB_KEY_MISSING) { res.status(503).json({ error: 'Data unavailable' }); return; }
   if (!finnhubRateCheck()) { res.status(429).json({ error: 'Rate limit — try again shortly' }); return; }
 
   const cacheKey = `finnhub:quote:${symbol}`;
@@ -171,12 +183,12 @@ router.get('/finnhub/quote', async (req: Request, res: Response) => {
 
   try {
     const fhRes = await finnhubFetch(`quote?symbol=${encodeURIComponent(symbol)}`);
-    if (!fhRes.ok) { res.status(fhRes.status).json({ error: 'Finnhub error' }); return; }
+    if (!fhRes.ok) { res.status(503).json({ error: 'Data unavailable' }); return; }
     const data = await fhRes.json();
     setCache(cacheKey, data);
     res.json(data);
   } catch {
-    res.status(502).json({ error: 'Finnhub timeout' });
+    res.status(503).json({ error: 'Data unavailable' });
   }
 });
 
@@ -186,16 +198,17 @@ router.get('/finnhub/news', async (req: Request, res: Response) => {
   const cacheKey = `finnhub:news:${category}`;
   const cached = getCached(cacheKey, 300_000); // 5 min cache for news
   if (cached) { res.json(cached); return; }
+  if (FINNHUB_KEY_MISSING) { res.status(503).json({ error: 'Data unavailable' }); return; }
   if (!finnhubRateCheck()) { res.status(429).json({ error: 'Rate limit — try again shortly' }); return; }
 
   try {
     const fhRes = await finnhubFetch(`news?category=${encodeURIComponent(category)}`);
-    if (!fhRes.ok) { res.status(fhRes.status).json({ error: 'Finnhub error' }); return; }
+    if (!fhRes.ok) { res.status(503).json({ error: 'Data unavailable' }); return; }
     const data = await fhRes.json();
     setCache(cacheKey, data);
     res.json(data);
   } catch {
-    res.status(502).json({ error: 'Finnhub timeout' });
+    res.status(503).json({ error: 'Data unavailable' });
   }
 });
 
@@ -209,18 +222,19 @@ router.get('/finnhub/company-news', async (req: Request, res: Response) => {
   const cacheKey = `finnhub:company-news:${symbol}:${from}:${to}`;
   const cached = getCached(cacheKey, 300_000);
   if (cached) { res.json(cached); return; }
+  if (FINNHUB_KEY_MISSING) { res.status(503).json({ error: 'Data unavailable' }); return; }
   if (!finnhubRateCheck()) { res.status(429).json({ error: 'Rate limit — try again shortly' }); return; }
 
   try {
     const fhRes = await finnhubFetch(
       `company-news?symbol=${encodeURIComponent(symbol)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     );
-    if (!fhRes.ok) { res.status(fhRes.status).json({ error: 'Finnhub error' }); return; }
+    if (!fhRes.ok) { res.status(503).json({ error: 'Data unavailable' }); return; }
     const data = await fhRes.json();
     setCache(cacheKey, data);
     res.json(data);
   } catch {
-    res.status(502).json({ error: 'Finnhub timeout' });
+    res.status(503).json({ error: 'Data unavailable' });
   }
 });
 
@@ -231,16 +245,17 @@ router.get('/finnhub/search', async (req: Request, res: Response) => {
   const cacheKey = `finnhub:search:${q.toLowerCase()}`;
   const cached = getCached(cacheKey, 600_000); // 10 min — symbol list changes rarely
   if (cached) { res.json(cached); return; }
+  if (FINNHUB_KEY_MISSING) { res.status(503).json({ error: 'Data unavailable' }); return; }
   if (!finnhubRateCheck()) { res.status(429).json({ error: 'Rate limit — try again shortly' }); return; }
 
   try {
     const fhRes = await finnhubFetch(`search?q=${encodeURIComponent(q)}`);
-    if (!fhRes.ok) { res.status(fhRes.status).json({ error: 'Finnhub error' }); return; }
+    if (!fhRes.ok) { res.status(503).json({ error: 'Data unavailable' }); return; }
     const data = await fhRes.json();
     setCache(cacheKey, data);
     res.json(data);
   } catch {
-    res.status(502).json({ error: 'Finnhub timeout' });
+    res.status(503).json({ error: 'Data unavailable' });
   }
 });
 

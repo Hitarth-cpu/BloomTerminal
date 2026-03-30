@@ -502,19 +502,29 @@ export function IBChat() {
           id:         m._id,
           chatId:     activeContactId,
           senderId:   m.senderId === user?.uid ? 'me' : m.senderId,
-          senderName: m.senderId === user?.uid ? (user?.displayName ?? 'You') : m.aad?.senderId ?? 'Contact',
+          senderName: m.senderId === user?.uid
+            ? (user?.displayName ?? 'You')
+            : contacts.find(c => c.contact_user_id === m.senderId)?.display_name ?? 'Contact',
           content:    '', // encrypted; will decrypt below
           timestamp:  new Date(m.createdAt).getTime(),
           type:       m.messageType === 'text' ? 'text' : 'text',
           encrypted:  m.encrypted as EncryptedPayload | undefined,
         }));
-        setMessages(prev => ({ ...prev, [activeContactId]: mapped }));
+        // Merge: keep any WS messages that arrived while the fetch was in-flight
+        // (identified by ids not present in the REST result set)
+        const fetchedIds = new Set(mapped.map(m => m.id));
+        setMessages(prev => {
+          const existing = prev[activeContactId] ?? [];
+          const wsOnly = existing.filter(m => !fetchedIds.has(m.id));
+          const merged = [...mapped, ...wsOnly].sort((a, b) => a.timestamp - b.timestamp);
+          return { ...prev, [activeContactId]: merged };
+        });
       } catch {
         // API unavailable — keep existing messages
       }
     })();
     return () => { cancelled = true; };
-  }, [activeContactId, getRoomId, user]);
+  }, [activeContactId, getRoomId, user, contacts]);
 
   // ── Send message ───────────────────────────────────────────────────────────
   const sendMsg = useCallback(async () => {

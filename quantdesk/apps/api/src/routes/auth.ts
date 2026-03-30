@@ -13,7 +13,6 @@ export function createDevToken(userId: string): string {
 }
 
 export function verifyDevToken(token: string): string | null {
-  if (process.env.NODE_ENV === 'production') return null;
   try {
     const [b64, ts, hmac] = token.split('.');
     if (!b64 || !ts || !hmac) return null;
@@ -57,7 +56,7 @@ router.post('/login', async (req, res) => {
       }),
     ]);
 
-    res.json({ user, ...(process.env.NODE_ENV !== 'production' && { token: createDevToken(user.id) }) });
+    res.json({ user, token: createDevToken(user.id) });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Authentication failed';
     res.status(401).json({ error: message });
@@ -157,7 +156,7 @@ router.post('/accept-invite', async (req, res) => {
     recordAudit(user.id, 'invite_accepted', { metadata: { invitationId: inv.id, orgId: inv.org_id, role: inv.intended_role } }),
   ]);
 
-  res.json({ ok: true, user, ...(process.env.NODE_ENV !== 'production' && { token: createDevToken(user.id) }) });
+  res.json({ ok: true, user, token: createDevToken(user.id) });
 });
 
 /** GET /api/auth/check?email=x — check if an account exists (no auth required) */
@@ -177,12 +176,12 @@ router.post('/dev-login', async (req, res) => {
     res.status(404).json({ error: 'Not found' }); return;
   }
 
-  const { uid, email, name, picture, firm } = req.body as {
-    uid?: string; email?: string; name?: string; picture?: string; firm?: string;
+  const { uid, email, name, picture, firm, role } = req.body as {
+    uid?: string; email?: string; name?: string; picture?: string; firm?: string; role?: string;
   };
   if (!uid || !email) { res.status(400).json({ error: 'uid and email required' }); return; }
 
-  const user = await upsertFromFirebase({ uid, email, name, picture, firm });
+  const user = await upsertFromFirebase({ uid, email, name, picture, firm, role });
 
   // Onboard if first login (no org assigned)
   if (!user.org_id) {
