@@ -97,7 +97,7 @@ export async function savePublicKey(userId: string, publicKey: string): Promise<
     { userId },
     {
       $set:         { publicKey, updatedAt: new Date() },
-      $setOnInsert: { userId, keyVersion: 1, createdAt: new Date() },
+      $setOnInsert: { userId, createdAt: new Date() },
       $inc:         { keyVersion: 1 },
     },
     { upsert: true },

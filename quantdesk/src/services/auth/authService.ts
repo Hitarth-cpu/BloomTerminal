@@ -54,12 +54,12 @@ function mockUser(email: string, displayName?: string): AuthUser {
 }
 
 // ─── Persist user to backend DB ───────────────────────────────────────────────
-async function syncToBackend(user: AuthUser, idToken?: string): Promise<string | null> {
+async function syncToBackend(user: AuthUser, idToken?: string, firm?: string): Promise<string | null> {
   try {
     const url  = idToken ? '/api/auth/login' : '/api/auth/dev-login';
     const body = idToken
       ? { idToken }
-      : { uid: user.uid, email: user.email, name: user.displayName, picture: user.photoURL };
+      : { uid: user.uid, email: user.email, name: user.displayName, picture: user.photoURL, ...(firm ? { firm } : {}) };
 
     const res  = await fetch(url, {
       method: 'POST',
@@ -133,12 +133,13 @@ export async function createAccount(
   email: string,
   password: string,
   displayName: string,
+  firm?: string,
 ): Promise<AuthUser> {
   if (!isConfigured || !app) {
     if (password.length < 8) throw new Error('Password must be at least 8 characters');
     await new Promise(r => setTimeout(r, 700));
     const user  = mockUser(email, displayName);
-    const token = await syncToBackend(user);
+    const token = await syncToBackend(user, undefined, firm);
     useAuthStore.getState().setUser(user, token ?? undefined);
     return user;
   }
@@ -153,7 +154,7 @@ export async function createAccount(
     provider:    'email',
   };
   const idToken = await result.user.getIdToken();
-  const token   = await syncToBackend(user, idToken);
+  const token   = await syncToBackend(user, idToken, firm);
   useAuthStore.getState().setUser(user, token ?? idToken);
   return user;
 }

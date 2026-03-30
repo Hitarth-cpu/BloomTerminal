@@ -112,7 +112,7 @@ function ensureMessageHandler(): void {
             redisSubscriber.subscribe(`chat:${roomId}`).catch(() => {});
             if (!userRooms.has(uid)) userRooms.set(uid, new Set());
             userRooms.get(uid)!.add(roomId);
-            return; // Don't forward to client
+            // Forward to client so IBChat can trigger key derivation for the new room
           }
           sendToUser(uid, event);
         }
@@ -224,6 +224,26 @@ export function attachWebSocket(server: Server): WebSocketServer {
     ensureMessageHandler();
     await subscribeUserChannels(userId);
     await setOnline(userId);
+
+    // Send initial presence snapshot so the client shows correct online status immediately
+    try {
+      const { query: dbQuery } = await import('../db/postgres');
+      const peers = await dbQuery<{ user_id: string }>(
+        `SELECT DISTINCT cm2.user_id
+         FROM chat_members cm1
+         JOIN chat_members cm2 ON cm1.room_id = cm2.room_id
+         WHERE cm1.user_id = $1 AND cm2.user_id <> $1`,
+        [userId],
+      );
+      for (const peer of peers) {
+        const isOnline = await redisPublisher.exists(`chat:online:${peer.user_id}`);
+        ws.send(JSON.stringify({
+          type:   'USER_PRESENCE_UPDATE',
+          userId: peer.user_id,
+          status: isOnline ? 'online' : 'offline',
+        }));
+      }
+    } catch { /* non-fatal — presence is best-effort */ }
 
     console.log(`[ws] ${userId} connected (${clients.get(userId)?.size ?? 1} sockets)`);
 

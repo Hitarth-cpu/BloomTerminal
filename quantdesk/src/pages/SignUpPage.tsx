@@ -185,7 +185,7 @@ export function SignUpPage() {
     setLoading(true); setError(null);
     try {
       const displayName = `${firstName} ${lastName}`.trim() || email.split('@')[0];
-      await createAccount(email, password, displayName);
+      await createAccount(email, password, displayName, firm.trim() || undefined);
       // authService already calls setUser with token — no need to call it again
     } catch (e) {
       setError((e as Error).message ?? 'Registration failed');

@@ -177,12 +177,12 @@ router.post('/dev-login', async (req, res) => {
     res.status(404).json({ error: 'Not found' }); return;
   }
 
-  const { uid, email, name, picture } = req.body as {
-    uid?: string; email?: string; name?: string; picture?: string;
+  const { uid, email, name, picture, firm } = req.body as {
+    uid?: string; email?: string; name?: string; picture?: string; firm?: string;
   };
   if (!uid || !email) { res.status(400).json({ error: 'uid and email required' }); return; }
 
-  const user = await upsertFromFirebase({ uid, email, name, picture });
+  const user = await upsertFromFirebase({ uid, email, name, picture, firm });
 
   // Onboard if first login (no org assigned)
   if (!user.org_id) {

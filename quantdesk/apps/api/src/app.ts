@@ -34,6 +34,10 @@ import askbRouter            from './routes/askb';
 
 const app = express();
 
+// Trust the first proxy hop (HuggingFace Spaces / nginx)
+// Required for express-rate-limit to read X-Forwarded-For correctly
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet({
   contentSecurityPolicy: false, // disabled for dev; enable in prod with proper CSP
@@ -99,7 +103,7 @@ app.use('/api/news',        newsRouter);         // public — market news
 app.use('/api/rss-proxy',  rssProxyRouter);      // public — RSS feed proxy
 app.use('/api/market-data', marketDataRouter);    // public — market data aggregation
 app.use('/api/workspaces', requireAuth, workspacesRouter);
-app.use('/api/documents',  requireAuth, documentAIRouter);
+app.use('/api/document-ai', requireAuth, documentAIRouter);
 app.use('/api/askb',       requireAuth, askbRouter);
 
 // ─── Admin (own auth layer inside each router) ────────────────────────────────
