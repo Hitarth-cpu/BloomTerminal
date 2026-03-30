@@ -24,6 +24,7 @@ let globalHandlers = new Set<Handler>();
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let currentToken: string | null = null;
+let reconnectAttempts = 0;
 
 function connect(token: string) {
   if (globalWs && globalWs.readyState <= WebSocket.OPEN) return;
@@ -44,6 +45,7 @@ function connect(token: string) {
   globalWs = new WebSocket(url);
 
   globalWs.onopen = () => {
+    reconnectAttempts = 0; // reset backoff on successful connection
     // Start heartbeat
     if (heartbeatInterval) clearInterval(heartbeatInterval);
     heartbeatInterval = setInterval(() => {
@@ -63,10 +65,12 @@ function connect(token: string) {
   globalWs.onclose = () => {
     if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
     globalWs = null;
-    // Auto-reconnect after 3s if we still have a token
+    // Auto-reconnect with exponential backoff (3s, 6s, 12s … capped at 60s)
     if (currentToken) {
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      reconnectTimeout = setTimeout(() => connect(currentToken!), 3_000);
+      const delay = Math.min(3_000 * 2 ** reconnectAttempts, 60_000);
+      reconnectAttempts++;
+      reconnectTimeout = setTimeout(() => connect(currentToken!), delay);
     }
   };
 
@@ -75,6 +79,7 @@ function connect(token: string) {
 
 function disconnect() {
   currentToken = null;
+  reconnectAttempts = 0;
   if (reconnectTimeout) { clearTimeout(reconnectTimeout); reconnectTimeout = null; }
   if (heartbeatInterval) { clearInterval(heartbeatInterval); heartbeatInterval = null; }
   globalWs?.close();

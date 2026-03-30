@@ -41,18 +41,20 @@ export async function upsertFromFirebase(decoded: {
   name?:        string;
   picture?:     string;
   firm?:        string;
+  role?:        string;
 }): Promise<User> {
   const rows = await query<User>(`
-    INSERT INTO users (firebase_uid, email, display_name, photo_url, firm, last_login_at)
-    VALUES ($1, $2, $3, $4, $5, NOW())
+    INSERT INTO users (firebase_uid, email, display_name, photo_url, firm, role, last_login_at)
+    VALUES ($1, $2, $3, $4, $5, $6, NOW())
     ON CONFLICT (firebase_uid) DO UPDATE
       SET email         = EXCLUDED.email,
           display_name  = EXCLUDED.display_name,
           photo_url     = EXCLUDED.photo_url,
           firm          = COALESCE(EXCLUDED.firm, users.firm),
+          role          = COALESCE(EXCLUDED.role, users.role),
           last_login_at = NOW()
     RETURNING *
-  `, [decoded.uid, decoded.email ?? '', decoded.name ?? decoded.email ?? 'Unknown', decoded.picture ?? null, decoded.firm ?? null]);
+  `, [decoded.uid, decoded.email ?? '', decoded.name ?? decoded.email ?? 'Unknown', decoded.picture ?? null, decoded.firm ?? null, decoded.role ?? null]);
   return rows[0];
 }
 

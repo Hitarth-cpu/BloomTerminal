@@ -42,6 +42,7 @@ app.set('trust proxy', 1);
 app.use(helmet({
   contentSecurityPolicy: false, // disabled for dev; enable in prod with proper CSP
   crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy: false, // Allow Google OAuth popup to access window.closed
 }));
 
 // CORS
