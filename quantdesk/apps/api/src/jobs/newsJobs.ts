@@ -6,13 +6,10 @@ export async function scheduleNewsJobs(): Promise<void> {
   const run = (fn: () => Promise<unknown>, label: string) =>
     fn().catch(err => console.error(`[newsJobs] ${label} failed:`, err.message));
 
-  // Initial run on startup
-  run(pollAllFeeds, 'pollAllFeeds');
-
-  // Same intervals as before: RSS 60s, Polygon 5min, Sentiment 2min
+  // Same intervals as before: RSS 60s, Polygon 5min, Sentiment 10min
   setInterval(() => run(pollAllFeeds,                  'pollAllFeeds'),    60_000);
   setInterval(() => run(() => fetchMarketNews(50),     'fetchMarketNews'), 300_000);
-  setInterval(() => run(() => tagRecentUntagged(20),   'tagSentiment'),    120_000);
+  setInterval(() => run(() => tagRecentUntagged(5),    'tagSentiment'),    600_000);
 
   console.log('[newsJobs] News worker started');
 }
