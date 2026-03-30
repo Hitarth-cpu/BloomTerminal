@@ -109,7 +109,7 @@ export async function createInvitation(data: {
   email: string; firstName?: string; lastName?: string;
   role: string; teamIds?: string[]; expiryHours?: number;
 }) {
-  return adminApi.post<{ invitation: AdminInvitation; token: string }>('/members/invitations', data);
+  return adminApi.post<{ invitation: AdminInvitation; token: string; emailSent?: boolean; inviteLink?: string }>('/members/invitations', data);
 }
 
 export async function revokeInvitation(id: string) {

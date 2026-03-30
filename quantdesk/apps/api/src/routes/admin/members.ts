@@ -115,15 +115,16 @@ router.post('/invitations', async (req, res) => {
 
     await writeAudit(req.adminUser.id, 'ADMIN_INVITATION_CREATED', { email, role, invitationId: inv.id });
 
-    const [orgRow] = await query<{ name: string }>(`SELECT name FROM organizations WHERE id = $1`, [req.adminUser.orgId]).catch(() => []);
-    sendInvitationEmail({
+    const [orgRow] = await query<{ name: string }>(`SELECT name FROM organizations WHERE id = $1`, [orgId]).catch(() => []);
+    const APP_URL = process.env.FRONTEND_URL ?? 'https://bloom-terminal.vercel.app';
+    const { sent: emailSent } = await sendInvitationEmail({
       to: email, firstName,
       inviterName: req.adminUser.displayName ?? req.adminUser.email,
       orgName: orgRow?.name ?? 'BloomTerminal',
       token, role, expiryHours,
-    }).catch(err => console.error('[invite] Email send failed:', err.message));
+    }).catch(() => ({ sent: false }));
 
-    res.status(201).json({ invitation: inv, token });
+    res.status(201).json({ invitation: inv, token, emailSent, inviteLink: `${APP_URL}/invite?token=${token}` });
   } catch (err) {
     console.error('[invite] POST /invitations error:', err);
     res.status(500).json({ error: (err as Error).message ?? 'Failed to create invitation' });
