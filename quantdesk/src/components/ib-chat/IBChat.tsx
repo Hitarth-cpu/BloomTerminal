@@ -17,7 +17,7 @@ import {
   type ApiBroadcastDelivery,
 } from '../../services/api/broadcastsApi';
 import {
-  sendMessage as apiSendMessage, fetchMessages as apiFetchMessages,
+  sendMessage as apiSendMessage, fetchMessages as apiFetchMessages, clearRoomMessages,
 } from '../../services/api/chatApi';
 import { api } from '../../services/api/apiClient';
 import { useAuthStore } from '../../stores/authStore';
@@ -304,20 +304,27 @@ function RequestBadge({
 
 function EncryptedContent({ payload, chatKey }: { payload: EncryptedPayload; chatKey: CryptoKey | undefined }) {
   const [plaintext, setPlaintext] = useState<string | null>(null);
-  const [error, setError]         = useState(false);
+  const [error, setError]         = useState<'legacy' | 'failed' | null>(null);
 
   useEffect(() => {
     if (!chatKey) { setPlaintext(null); return; }
-    // Guard against legacy PSK messages or malformed payloads that lack the `ct` field
-    if (!payload?.ct || !payload?.iv) { setError(true); return; }
-    setPlaintext(null); setError(false);
-    decryptMessage(payload, chatKey).then(setPlaintext).catch(() => setError(true));
+    // Old PSK messages or malformed payloads lack the `ct` field — permanently unreadable
+    if (!payload?.ct || !payload?.iv) { setError('legacy'); return; }
+    setPlaintext(null); setError(null);
+    decryptMessage(payload, chatKey).then(setPlaintext).catch(() => setError('failed'));
   }, [payload, chatKey]);
 
-  if (error) {
+  if (error === 'legacy') {
+    return (
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+        [Legacy encrypted message]
+      </span>
+    );
+  }
+  if (error === 'failed') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--negative)', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-        <ShieldAlert size={11} /> <span>[DECRYPTION FAILED]</span>
+        <ShieldAlert size={11} /> <span>[Decryption failed — keys may be mismatched]</span>
       </div>
     );
   }
@@ -499,7 +506,7 @@ export function IBChat() {
           content:    '', // encrypted; will decrypt below
           timestamp:  new Date(m.createdAt).getTime(),
           type:       m.messageType === 'text' ? 'text' : 'text',
-          encrypted:  m.encrypted as unknown as EncryptedPayload | undefined,
+          encrypted:  m.encrypted as EncryptedPayload | undefined,
         }));
         setMessages(prev => ({ ...prev, [activeContactId]: mapped }));
       } catch {
@@ -525,7 +532,7 @@ export function IBChat() {
 
     let encrypted: EncryptedPayload;
     try {
-      encrypted = await encryptMessage(plaintext, activeChatKey, { chatId: activeContactId, senderId: 'me' });
+      encrypted = await encryptMessage(plaintext, activeChatKey, { chatId: activeContactId, senderId: user?.uid ?? '' });
     } catch {
       setInput(plaintext); // restore input on failure
       return;
@@ -553,13 +560,26 @@ export function IBChat() {
       const roomId = await getRoomId(activeContactId);
       await apiSendMessage(roomId, {
         messageType: 'text',
-        encrypted: encrypted as unknown as { iv: string; ciphertext: string; tag: string },
+        encrypted: encrypted,
         aad: { chatRoomId: roomId, senderId: user?.uid ?? 'me', messageType: 'text' },
       });
     } catch (err) {
       console.warn('[chat] Failed to send message to API:', (err as Error).message);
     }
   }, [input, activeContactId, chatKeys, user, getRoomId]);
+
+  // ── Clear chat history ─────────────────────────────────────────────────────
+  const clearHistory = useCallback(async () => {
+    if (!activeContactId) return;
+    if (!window.confirm('Clear all messages in this chat? This cannot be undone.')) return;
+    try {
+      const roomId = await getRoomId(activeContactId);
+      await clearRoomMessages(roomId);
+      setMessages(prev => ({ ...prev, [activeContactId]: [] }));
+    } catch (err) {
+      console.warn('[chat] Failed to clear history:', (err as Error).message);
+    }
+  }, [activeContactId, getRoomId]);
 
   // ── WebSocket: live broadcast + contact + chat events ──────────────────────
   useWebSocket(useCallback((event) => {
@@ -573,6 +593,11 @@ export function IBChat() {
       const uid = event.userId as string;
       const status = event.status as string;
       if (uid) setPresenceMap(prev => ({ ...prev, [uid]: status }));
+    }
+    if (event.type === 'SUBSCRIBE_ROOM') {
+      // Server forwarded a new-room notification — re-send subscription so key derivation triggers
+      const roomId = event.roomId as string;
+      if (roomId) sendWsEvent({ type: 'SUBSCRIBE_ROOM', roomId });
     }
     if (event.type === 'IB_MESSAGE') {
       const senderId = event.senderId as string;
@@ -818,6 +843,13 @@ export function IBChat() {
                   ) : (
                     <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8, color: 'var(--text-muted)' }}>INITIALISING…</span>
                   )}
+                  <button
+                    onClick={clearHistory}
+                    title="Clear chat history"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px 4px', display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 8 }}
+                  >
+                    <X size={10} /> CLEAR
+                  </button>
                   <Video size={12} color="var(--text-muted)" style={{ cursor: 'pointer' }} />
                   <Phone size={12} color="var(--text-muted)" style={{ cursor: 'pointer' }} />
                   <MoreHorizontal size={12} color="var(--text-muted)" style={{ cursor: 'pointer' }} />

@@ -15,12 +15,22 @@ async function writeAudit(adminId: string, action: string, meta: object = {}): P
 // GET /api/admin/members
 router.get('/', async (req, res) => {
   const { search, role, team, status, sort = 'display_name', page = '1', limit = '50' } = req.query as Record<string, string>;
-  const orgId = req.adminUser.orgId;
+  let orgId = req.adminUser.orgId;
 
-  // Show users assigned to this org OR unassigned (org_id IS NULL).
-  // Unassigned users appear during the migration period before ensureOrgAssigned
-  // has run on their first login since the fix was deployed.
-  const conditions: string[] = ['(u.org_id = $1 OR u.org_id IS NULL)'];
+  // If admin has no org yet, auto-assign one (mirrors the invitations handler logic)
+  if (!orgId) {
+    const [org] = await query<{ id: string }>(
+      `INSERT INTO organizations (name, slug, display_name, plan)
+       VALUES ('Default Org', 'default-org', 'Default Org', 'enterprise')
+       ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`,
+      [],
+    );
+    orgId = org.id;
+    await query(`UPDATE users SET org_id = $1, org_role = 'super_admin' WHERE id = $2`, [orgId, req.adminUser.id]);
+  }
+
+  const conditions: string[] = ['u.org_id = $1'];
   const params: unknown[] = [orgId];
 
   if (search) {
