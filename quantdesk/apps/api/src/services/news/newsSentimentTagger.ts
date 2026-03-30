@@ -9,6 +9,13 @@ interface TagResult {
   aiSummary: string;
 }
 
+class QuotaExceededError extends Error {
+  constructor() { super('Gemini quota exceeded'); this.name = 'QuotaExceededError'; }
+}
+
+// Module-level cooldown: skip all tagging until this timestamp
+let quotaExhaustedUntil = 0;
+
 export async function tagNewsSentiment(newsItemId: string): Promise<void> {
   const [item] = await query<{ id: string; title: string; summary: string | null }>(
     'SELECT id, title, summary FROM news_items WHERE id = $1 AND sentiment IS NULL',
@@ -47,17 +54,41 @@ export async function tagNewsSentiment(newsItemId: string): Promise<void> {
       );
     }
   } catch (err) {
-    console.warn(`[sentimentTagger] Failed for ${newsItemId}: ${(err as Error).message}`);
+    const msg = (err as Error).message ?? '';
+    if (msg.includes('429') || msg.toLowerCase().includes('quota')) {
+      throw new QuotaExceededError();
+    }
+    console.warn(`[sentimentTagger] Failed for ${newsItemId}: ${msg}`);
   }
 }
 
-/** Tag recent untagged news items. Exported as both names for compatibility. */
+/** Tag recent untagged news items sequentially to avoid quota storms. */
 export async function tagRecentUntagged(limit = 20): Promise<void> {
+  if (Date.now() < quotaExhaustedUntil) {
+    const minutesLeft = Math.ceil((quotaExhaustedUntil - Date.now()) / 60_000);
+    console.log(`[sentimentTagger] Quota cooldown active — skipping (${minutesLeft}m remaining)`);
+    return;
+  }
+
   const items = await query<{ id: string }>(
     'SELECT id FROM news_items WHERE sentiment IS NULL ORDER BY created_at DESC LIMIT $1',
     [limit],
   );
-  await Promise.allSettled(items.map(i => tagNewsSentiment(i.id)));
+
+  for (const item of items) {
+    try {
+      await tagNewsSentiment(item.id);
+      // Small delay between requests to stay within rate limits
+      await new Promise(r => setTimeout(r, 500));
+    } catch (err) {
+      if (err instanceof QuotaExceededError) {
+        quotaExhaustedUntil = Date.now() + 60 * 60 * 1000; // 1-hour cooldown
+        console.warn('[sentimentTagger] Quota exceeded — pausing sentiment tagging for 1 hour');
+        return; // Stop processing remaining items
+      }
+      // Non-quota errors are already logged inside tagNewsSentiment
+    }
+  }
 }
 
 /** Alias for backward compatibility */
