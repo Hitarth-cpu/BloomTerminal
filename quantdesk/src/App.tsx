@@ -39,6 +39,23 @@ function StandardApp() {
     return unsub;
   }, []);
 
+  // Pre-register ECDH public key so peers can open a chat with this user immediately,
+  // without waiting for the user to open IB Chat manually.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void (async () => {
+      try {
+        const { getOrCreateUserKeyPair, exportPublicKey } = await import('./services/crypto/ecdhKeyExchange');
+        const { publishPublicKey } = await import('./services/api/chatApi');
+        const pair   = await getOrCreateUserKeyPair();
+        const pubB64 = await exportPublicKey(pair.publicKey);
+        await publishPublicKey(pubB64);
+      } catch {
+        // Non-fatal — will retry when IB Chat is opened
+      }
+    })();
+  }, [isAuthenticated]);
+
   if (!isAuthenticated) {
     return (
       <AuthLayout>
