@@ -28,4 +28,8 @@ export function validateEnv() {
   } else {
     console.log('✅ Environment variables validated');
   }
+
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('⚠️  RESEND_API_KEY not set — invitation emails will not be sent (add to HF Spaces secrets)');
+  }
 }
