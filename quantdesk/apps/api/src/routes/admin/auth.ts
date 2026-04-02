@@ -28,6 +28,22 @@ function decryptMfaSecret(encrypted: string): string {
   return decipher.update(Buffer.from(encHex, 'hex')).toString('utf8') + decipher.final('utf8');
 }
 
+/** Call once at server startup. Logs CRITICAL if the default dev key is in use. */
+export function validateMfaKeyEnv(): void {
+  const key = process.env.ADMIN_MFA_KEY;
+  if (!key || key === 'dev-mfa-key-change-in-production') {
+    const msg = '[SECURITY] ADMIN_MFA_KEY is not set or uses the insecure default. ' +
+      'MFA secrets are encrypted with a publicly known key. Set ADMIN_MFA_KEY in your environment.';
+    if (process.env.NODE_ENV === 'production') {
+      // Hard-fail in production — do not allow startup with default key
+      console.error(msg);
+      process.exit(1);
+    } else {
+      console.warn(msg);
+    }
+  }
+}
+
 async function writeAdminAudit(userId: string, action: string, meta: Record<string, unknown> = {}): Promise<void> {
   await query(
     `INSERT INTO audit_log (user_id, action, metadata) VALUES ($1, $2, $3)`,
