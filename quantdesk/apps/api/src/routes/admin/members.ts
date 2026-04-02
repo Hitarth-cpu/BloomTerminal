@@ -12,13 +12,25 @@ async function writeAudit(adminId: string, action: string, meta: object = {}): P
     [adminId, action, JSON.stringify(meta)]).catch(() => {});
 }
 
-// GET /api/admin/members
-router.get('/', async (req, res) => {
-  const { search, role, team, status, sort = 'display_name', page = '1', limit = '50' } = req.query as Record<string, string>;
-  let orgId = req.adminUser.orgId;
+/**
+ * If the admin user has no org_id, look up the primary existing org
+ * (most members) and assign them. Never creates duplicate orgs.
+ */
+async function ensureAdminHasOrg(adminId: string, currentOrgId: string | null): Promise<string> {
+  if (currentOrgId) return currentOrgId;
 
-  // If admin has no org yet, auto-assign one (mirrors the invitations handler logic)
-  if (!orgId) {
+  // Try to find any existing org (prefer one with most members)
+  const [existing] = await query<{ id: string }>(
+    `SELECT org_id AS id FROM users WHERE org_id IS NOT NULL
+     GROUP BY org_id ORDER BY COUNT(*) DESC LIMIT 1`,
+    [],
+  );
+
+  let orgId: string;
+  if (existing) {
+    orgId = existing.id;
+  } else {
+    // Last-resort: upsert the canonical default org
     const [org] = await query<{ id: string }>(
       `INSERT INTO organizations (name, slug, display_name, plan)
        VALUES ('Default Org', 'default-org', 'Default Org', 'enterprise')
@@ -27,8 +39,19 @@ router.get('/', async (req, res) => {
       [],
     );
     orgId = org.id;
-    await query(`UPDATE users SET org_id = $1, org_role = 'super_admin' WHERE id = $2`, [orgId, req.adminUser.id]);
   }
+
+  await query(
+    `UPDATE users SET org_id = $1, org_role = 'super_admin' WHERE id = $2`,
+    [orgId, adminId],
+  );
+  return orgId;
+}
+
+// GET /api/admin/members
+router.get('/', async (req, res) => {
+  const { search, role, team, status, sort = 'display_name', page = '1', limit = '50' } = req.query as Record<string, string>;
+  const orgId = await ensureAdminHasOrg(req.adminUser.id, req.adminUser.orgId ?? null);
 
   const conditions: string[] = ['u.org_id = $1'];
   const params: unknown[] = [orgId];
@@ -87,19 +110,7 @@ router.post('/invitations', async (req, res) => {
 
     if (!email || !role) { res.status(400).json({ error: 'email and role are required' }); return; }
 
-    // Auto-assign org if admin has none (create default)
-    let orgId = req.adminUser.orgId;
-    if (!orgId) {
-      const [org] = await query<{ id: string }>(
-        `INSERT INTO organizations (name, slug, display_name, plan)
-         VALUES ('Suraksha Investment', 'suraksha-investment', 'Suraksha Investment', 'enterprise')
-         ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
-         RETURNING id`,
-        [],
-      );
-      orgId = org.id;
-      await query(`UPDATE users SET org_id = $1, org_role = 'super_admin' WHERE id = $2`, [orgId, req.adminUser.id]);
-    }
+    let orgId = await ensureAdminHasOrg(req.adminUser.id, req.adminUser.orgId ?? null);
 
     const token = randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + expiryHours * 3600 * 1000);
