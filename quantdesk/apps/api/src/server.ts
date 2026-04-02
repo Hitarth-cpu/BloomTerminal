@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { validateEnv } from './config/validateEnv';
+import { validateMfaKeyEnv } from './routes/admin/auth';
 validateEnv();
+validateMfaKeyEnv();
 import http from 'http';
 import app from './app';
 import { checkHealth } from './db/health';
