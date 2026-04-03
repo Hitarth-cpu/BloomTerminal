@@ -29,32 +29,45 @@ export interface ECDHKeyPair {
   privateKey: CryptoKey;  // non-extractable — never leaves IndexedDB
 }
 
+// Deduplication lock: prevents two simultaneous callers (e.g. App.tsx + IBChat)
+// from each generating a fresh keypair when IndexedDB is empty, which would
+// publish one key to the server while storing a *different* key locally —
+// causing decryption failures. Concurrent callers share the same in-flight promise.
+let _keyPairInFlight: Promise<ECDHKeyPair> | null = null;
+
 /**
  * Returns the user's persistent ECDH P-256 key pair, generating one if none
  * exists yet. The private key is stored as non-extractable in IndexedDB.
+ * Concurrent calls are serialised — they all await the same promise.
  */
 export async function getOrCreateUserKeyPair(): Promise<ECDHKeyPair> {
-  const [storedPrivate, storedPublic] = await Promise.all([
-    loadKey(MY_PRIVATE_KEY_ID),
-    loadKey(MY_PUBLIC_KEY_ID),
-  ]);
+  if (_keyPairInFlight) return _keyPairInFlight;
 
-  if (storedPrivate && storedPublic) {
-    return { privateKey: storedPrivate, publicKey: storedPublic };
-  }
+  _keyPairInFlight = (async () => {
+    const [storedPrivate, storedPublic] = await Promise.all([
+      loadKey(MY_PRIVATE_KEY_ID),
+      loadKey(MY_PUBLIC_KEY_ID),
+    ]);
 
-  const pair = await crypto.subtle.generateKey(
-    { name: 'ECDH', namedCurve: 'P-256' },
-    true,                        // extractable — needed to export public key as SPKI
-    ['deriveKey', 'deriveBits'],
-  ) as CryptoKeyPair;
+    if (storedPrivate && storedPublic) {
+      return { privateKey: storedPrivate, publicKey: storedPublic };
+    }
 
-  await Promise.all([
-    storeKey(MY_PRIVATE_KEY_ID, pair.privateKey),
-    storeKey(MY_PUBLIC_KEY_ID,  pair.publicKey),
-  ]);
+    const pair = await crypto.subtle.generateKey(
+      { name: 'ECDH', namedCurve: 'P-256' },
+      true,                        // extractable — needed to export public key as SPKI
+      ['deriveKey', 'deriveBits'],
+    ) as CryptoKeyPair;
 
-  return { privateKey: pair.privateKey, publicKey: pair.publicKey };
+    await Promise.all([
+      storeKey(MY_PRIVATE_KEY_ID, pair.privateKey),
+      storeKey(MY_PUBLIC_KEY_ID,  pair.publicKey),
+    ]);
+
+    return { privateKey: pair.privateKey, publicKey: pair.publicKey };
+  })().finally(() => { _keyPairInFlight = null; });
+
+  return _keyPairInFlight;
 }
 
 /**
