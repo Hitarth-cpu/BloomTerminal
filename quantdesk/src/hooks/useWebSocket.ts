@@ -37,9 +37,11 @@ function connect(token: string) {
   if (import.meta.env.DEV) {
     url = `ws://${window.location.hostname}:3001/ws?token=${encodeURIComponent(token)}`;
   } else {
-    const wsBase = (import.meta.env.VITE_WS_URL as string | undefined)
-      ?? `wss://${window.location.host}/ws`;
-    url = `${wsBase}?token=${encodeURIComponent(token)}`;
+    const wsBase = import.meta.env.VITE_WS_URL as string | undefined;
+    if (!wsBase) {
+      console.error('[WS] VITE_WS_URL is not set — WebSocket will fail. Add it to your Vercel env vars.');
+    }
+    url = `${wsBase ?? `wss://${window.location.host}/ws`}?token=${encodeURIComponent(token)}`;
   }
 
   globalWs = new WebSocket(url);
