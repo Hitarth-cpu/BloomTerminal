@@ -1,3 +1,11 @@
+title: BloomTerminal API
+emoji: 📈
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+app_port: 7860
+
 # QuantDesk — Bloomberg-Inspired Quant Terminal
 
 An institutional-grade, AI-powered quantitative data analysis terminal. Built with React, TypeScript, and Node.js, QuantDesk mirrors the depth and density of the Bloomberg Terminal — combining real-time market data, AI research, encrypted institutional messaging, risk management, and document analysis in a unified dark-themed interface.
